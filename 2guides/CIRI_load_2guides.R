@@ -5,8 +5,9 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(ggplot2))
 suppressMessages(library(gtools))
 suppressMessages(library(dplyr))
-suppressMessages(library(ggrepel))
+suppressMessages(library(Seurat))
 suppressMessages(library(viridis))
+suppressMessages(library(ggrepel))
 set.seed(1234597698)
 
 dir = "."

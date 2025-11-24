@@ -7,11 +7,11 @@ print(paste("Folder:", dir))
 file = "processed_cds.RData"
 #file = args[2]
 print(paste("File:", file))
-pseudotime = "pseudotime_Group_5.csv"
+pseudotime = "pseudotime_Group_3.csv"
 #pseudotime = args[3]
 print(paste("Pseudotime file:", pseudotime))
 
-all = F
+all = T
 #all = as.logical(args[4])
 print(paste("All:", all))
 
@@ -43,8 +43,26 @@ names(pt) = c("pseudotime")
 
 #CUMOLATIVE FREQ
 pt$nomi = rownames(pt)
+num_pieces <- length(strsplit(pt$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
-pt = UMAP = separate(pt, nomi,into = c("cellID","sample", "guide_a", "guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
+
+if(num_pieces == 8){
+  pt <- separate(pt, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+} else if(num_pieces == 10){
+  pt <- separate(
+    pt,
+    nomi,
+    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "gene_comb", "type"),
+    sep = "\\.",
+    remove = FALSE,
+    convert = TRUE,
+    fill = "right"
+  )
+  
+  pt = mutate(pt, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+  pt = mutate(pt, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+}
+
 pt$sample = as.factor(pt$sample)
 
 
@@ -279,6 +297,135 @@ for (t in unique(pt$type)) {
   }
 }
 
+#CIRI guide comb volcano plot
+pt = mutate(pt, guide_comb = paste(guide_a, guide_i, sep = "-"))
+pt_CIRI = filter(pt, type == "CIRI")
+# Remove guide_comb groups with fewer than 10 cells inside CIRI
+pt_CIRI = pt_CIRI %>%
+  group_by(guide_comb, sample) %>%
+  filter(n() >= 8) %>%
+  ungroup()
+
+message("Remaining guide_comb in CIRI after filtering: ",
+        length(unique(pt_CIRI$guide_comb)))
+
+###############################################
+# --- CUMULATIVE FREQUENCY PER SAMPLE (guide_comb) ---
+###############################################
+
+samples = unique(pt$sample)
+
+for (s in samples) {
+  tmp = filter(pt_CIRI, sample == s)
+  
+  p = ggplot(tmp, aes(pseudotime, colour = guide_i)) +
+      stat_ecdf(geom = "step") +
+      theme_classic(base_size = 14) +
+      ylab("Cumulative frequency") +
+      xlab("monocle pseudotime") +
+      ggtitle(paste("Cumulative frequency on", analysis, "sample", s)) +
+      facet_grid(vars(guide_a))+
+      scale_color_manual(values = viridis::turbo(length(unique(tmp$guide_i)))) 
+    
+    ggsave(
+      filename = paste0(dir, "/cumulative_frequency_", analysis, "_guide_comb_facet_sample_", s, ".pdf"),
+      plot = p,
+      width = 8, height = 15
+    )
+  
+    print(length(unique(tmp$guide_comb)))
+    #if (length(unique(tmp$guide_comb)) < 26) {
+      p = ggplot(tmp, aes(pseudotime, colour = guide_i, linetype = guide_a)) +
+        stat_ecdf(geom = "step") +
+        theme_classic(base_size = 14) +
+        ylab("Cumulative frequency") +
+        xlab("monocle pseudotime") +
+        ggtitle(paste("Cumulative frequency on", analysis, "sample", s)) +
+        scale_color_manual(values = viridis::turbo(length(unique(tmp$guide_i))))
+      
+      ggsave(
+        filename = paste0(dir, "/cumulative_frequency_", analysis, "_guide_comb_sample_", s, ".pdf"),
+        plot = p,
+        width = 14, height = 10
+      )
+   # } else {
+    #  message("Too many guide_comb for sample ", s)
+    #}
+}
+
+###############################################
+# --- KS-TEST and VOLCANO for guide_comb (CIRI only) ---
+###############################################
+
+control_comb = c("NTCa-NTCi")
+
+ks_df = data.frame()
+
+for (gc in unique(pt_CIRI$guide_comb)) {
+  tmp_case = filter(pt_CIRI, guide_comb == gc)
+  
+  if (nrow(tmp_case) < 2 || length(unique(tmp_case$pseudotime)) <= 1)
+    next
+  
+  tmp_ctrl = filter(pt_CIRI, guide_comb %in% control_comb)
+  
+  if (nrow(tmp_ctrl) < 2 || length(unique(tmp_ctrl$pseudotime)) <= 1)
+    next
+  
+  ks_g = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "greater")
+  ks_l = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "less")
+  
+  ks_df = rbind(
+    ks_df,
+    data.frame(
+      guide_comb = gc,
+      pval = ks_g$p.value,
+      stat = -ks_g$statistic[["D^+"]],
+      direction = "greater"
+    ),
+    data.frame(
+      guide_comb = gc,
+      pval = ks_l$p.value,
+      stat = ks_l$statistic[["D^-"]],
+      direction = "less"
+    )
+  )
+}
+
+if (nrow(ks_df) > 0) {
+  ks_df$padj = p.adjust(ks_df$pval, method = "BH")
+  ks_df$neglog = -log10(ks_df$padj)
+  ks_df$sig = ks_df$padj <= 0.05
+  
+  write.csv(
+    ks_df,
+    paste0(dir, "/CIRI_guide_comb_ks_statistics.csv"),
+    row.names = FALSE
+  )
+  
+  library(ggrepel)
+  
+  p_volc = ggplot(ks_df, aes(x = stat, y = neglog)) +
+    geom_point(aes(colour = direction), alpha = 0.5, size = 2) +
+    geom_text_repel(aes(label = guide_comb), size = 3, max.overlaps = 20) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dotted", color = "red") +
+    geom_vline(xintercept = 0, linetype = "dotted") +
+    theme_minimal(base_size = 14) +
+    labs(
+      title = "KS volcano plot for guide_comb (CIRI)",
+      x = "KS statistic",
+      y = "-log10 adj p-value"
+    ) +
+    scale_color_viridis_d()
+  
+  ggsave(
+    filename = paste0(dir, "/CIRI_volcano_guide_comb.pdf"),
+    plot = p_volc,
+    width = 12, height = 7
+  )
+}
+
+
 # --- KS TEST based on control genes_a and genes_i ---
 ks_stat = data.frame()
 tmp2 = pt
@@ -327,7 +474,7 @@ ks_stat_fil = ks_stat %>%
 
 write.csv(ks_stat, file= paste0(dir, "/genes_a_ks_statistics_vscontrol_genes_all",all, "_", analysis, ".csv"), row.names=FALSE)
 
-ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
+p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
   ggrepel::geom_text_repel(
     data=ks_stat_fil,
@@ -342,7 +489,7 @@ ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
   scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
 
-ggsave(filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_a_all",all, "_", analysis, ".pdf"),
+ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_a_all",all, "_", analysis, ".pdf"),
        width = 14, height = 8)
 
 
@@ -411,7 +558,7 @@ ks_stat_fil = ks_stat %>%
 
 write.csv(ks_stat, file= paste0(dir, "/genes_i_ks_statistics_vscontrol_genes_ill",all, "_", analysis, ".csv"), row.names=FALSE)
 
-ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
+p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
   ggrepel::geom_text_repel(
     data=ks_stat_fil,
@@ -426,7 +573,7 @@ ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
   scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
 
-ggsave(filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_i_all",all, "_", analysis, ".pdf"),
+ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_i_all",all, "_", analysis, ".pdf"),
        width = 14, height = 8)
 
 
@@ -495,7 +642,7 @@ ks_stat_fil = ks_stat %>%
 
 write.csv(ks_stat, file= paste0(dir, "/genes_i_ks_statistics_vscontrol_guide_all",all, "_", analysis, ".csv"), row.names=FALSE)
 
-ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
+p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
   ggrepel::geom_text_repel(
     data=ks_stat_fil,
@@ -510,7 +657,7 @@ ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
   labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
   scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
 
-ggsave(filename = paste0(dir, "/volcano_ks_stats_vs_control_guide_a_all",all, "_", analysis, ".pdf"),
+ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_guide_a_all",all, "_", analysis, ".pdf"),
        width = 14, height = 8)
 
 

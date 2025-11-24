@@ -14,7 +14,9 @@ library(Seurat)
 a_genes = c("MYOD_1", "MYOD_2")
 i_genes = c("NANOG","OCT4","SOX2")
 
-ann = read.csv("./guides.csv", header = F)
+dir = "/Users/marialuisaratto/scripts/CIRI/"
+
+ann = read.csv(paste0(dir, "/guides.csv"), header = F)
 names(ann) = c("feature", "seq", "type")
 #seq is not correct in this file but it is not actually used here
 ann$seq = NULL
@@ -28,7 +30,7 @@ names(tmp_i) = c("feature", "type")
 ann = rbind(ann, tmp_a, tmp_i)
 
 #LOAD
-CIRI <- H5File$new("./filtered_feature_bc_matrix.h5", mode = "r")
+CIRI <- H5File$new(paste0(dir,"/filtered_feature_bc_matrix.h5"), mode = "r")
 CIRI[["matrix"]]$ls()
 
 feat <- CIRI[["matrix/features"]]
@@ -95,12 +97,12 @@ p = ggplot(plot_df, aes(x = feature, y = total_umi, fill = type)) +
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1)
   )
-ggsave("./total_umixguide.pdf", p)
+ggsave(paste0(dir,"/total_umixguide.pdf"), p)
 
 #hist of UMI x guide 
 p = ggplot(CIRI_long, aes(x = umi)) +
   geom_histogram(binwidth = 1)
-ggsave("./cellranger_UMIxguide_hist.pdf", p)
+ggsave(paste0(dir,"/cellranger_UMIxguide_hist.pdf"), p)
 
 # Total UMIs per cell 
 umis_total <- CIRI_long %>%
@@ -112,46 +114,46 @@ CIRI_long <- CIRI_long %>%
   left_join(umis_total, by = "cell_barcode") %>%
   mutate(percentage = ( umi / total_umis) * 100 ) 
 
-write.csv(CIRI_long, "./CIRI_long.csv")
+write.csv(CIRI_long, paste0(dir, "/CIRI_long.csv"))
 
 #hist of UMI x cell
 tmp = distinct(CIRI_long[, c("cell_barcode", "total_umis")])
 p = ggplot(tmp, aes(x = total_umis)) +
   geom_histogram(binwidth = 1)
-ggsave("./cellranger_UMIxcell_hist.pdf", p)
+ggsave(paste0(dir,"/cellranger_UMIxcell_hist.pdf"), p)
 
 #UMIxguide and percentage for each guide
 for (guide in unique(CIRI_long$feature)) {
   df = filter(CIRI_long, feature == guide)
   p = ggplot(df, aes(x = umi)) + 
     geom_histogram(binwidth = 1)
-  ggsave(paste0("./single_guide_hist_", guide, ".pdf"), p)
+  ggsave(paste0(dir, "./single_guide_hist_", guide, ".pdf"), p)
   
   p = ggplot(df, aes(x = percentage))+ 
     geom_histogram(binwidth = 1)
-  ggsave(paste0("./single_guide_hist_percentage_", guide, ".pdf"), p)
+  ggsave(paste0(dir, "./single_guide_hist_percentage_", guide, ".pdf"), p)
 }
 
 p = ggplot(CIRI_long, aes(x = umi)) + 
   geom_histogram(binwidth = 1) + 
   facet_wrap(vars(feature))
-ggsave(paste0("./single_guide_hist_facet.pdf"), p, width = 10, height = 10)
+ggsave(paste0(dir, "./single_guide_hist_facet.pdf"), p, width = 10, height = 10)
 
 p = ggplot(df, aes(x = percentage))+ 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./single_guide_hist_percentage_", guide, ".pdf"), p)
+ggsave(paste0(dir, "./single_guide_hist_percentage_", guide, ".pdf"), p)
 
 p = ggplot(CIRI_long, aes(x = percentage))+ 
   geom_histogram(binwidth = 1)+ 
   facet_wrap(vars(feature))
-ggsave(paste0("./single_guide_hist_percentage_facet.pdf"), p, width = 10, height = 10)
+ggsave(paste0(dir, "./single_guide_hist_percentage_facet.pdf"), p, width = 10, height = 10)
 
 
 p = ggplot(CIRI_long, aes(x = percentage, y = umi))+
   geom_count(alpha = 0.1, colour = "blue", fill = "blue") +
   scale_y_log10() +
   facet_wrap(vars(feature))
-ggsave(paste0("./2D_facet.pdf"), p, width = 10, height = 10)
+ggsave(paste0(dir, "./2D_facet.pdf"), p, width = 10, height = 10)
 
 
 unique(CIRI_long$feature)
@@ -207,22 +209,22 @@ p <- ggplot(CRISPRai_plot, aes(x = variable_umi, y = fixed_umi, color = feature)
     legend.position = "top"
   )
 
-ggsave("./CRISPRai_fixed_vs_variable_scatter.pdf", p, width = 12, height = 10)
+ggsave(paste0(dir,"./CRISPRai_fixed_vs_variable_scatter.pdf"), p, width = 12, height = 10)
 
 p = ggplot(crispra, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRa_hist_percentage_fixed_vs_variable.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_percentage_fixed_vs_variable.pdf"), p)
 
 p = ggplot(crispri, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRi_hist_percentage_fixed_vs_variable.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_percentage_fixed_vs_variable.pdf"), p)
 
 
 p = ggplot(CRISPRai, aes(x = percentage, y = total_umi))+
   geom_count(alpha = 0.1, colour = "blue", fill = "blue") +
   scale_y_log10() +
   facet_wrap(vars(feature))
-ggsave(paste0("./2D_CRISPR_facet_fixed_vs_variable.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_CRISPR_facet_fixed_vs_variable.pdf"), p, width = 20, height = 10)
 
 
 # consider only CRISPRa and CRISPRi fixed guides 
@@ -245,33 +247,33 @@ CRISPR <- bind_rows(crispra_df, crispri_df)
 
 p = ggplot(crispra_df, aes(x = umi)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRa_hist.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist.pdf"), p)
 
 p = p + coord_cartesian(xlim = c(0,800) ,ylim = c(0, 80)) 
-ggsave(paste0("./CRISPRa_hist_80_800.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_80_800.pdf"), p)
 
 p = ggplot(crispra_df, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRa_hist_percentage.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_percentage.pdf"), p)
 
 
 p = ggplot(crispri_df, aes(x = umi)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRi_hist.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist.pdf"), p)
 
 p = p + coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRi_hist_15_1000.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_15_1000.pdf"), p)
 
 p = ggplot(crispri_df, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRi_hist_percentage.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_percentage.pdf"), p)
 
 
 p = ggplot(CRISPR, aes(x = percentage, y = umi))+
   geom_count(alpha = 0.1, colour = "blue", fill = "blue") +
   scale_y_log10() +
   facet_wrap(vars(feature))
-ggsave(paste0("./2D_CRISPR_facet.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_CRISPR_facet.pdf"), p, width = 20, height = 10)
 
 
 # COMMON NO FILTER 
@@ -287,33 +289,33 @@ length(unique(common_i$cell_barcode))
 
 p = ggplot(common_a, aes(x = umi)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRa_hist_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_common.pdf"), p)
 
 p = p + coord_cartesian(xlim = c(0,800) ,ylim = c(0, 80)) 
-ggsave(paste0("./CRISPRa_hist_80_800_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_80_800_common.pdf"), p)
 
 p = ggplot(common_a, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRa_hist_percentage_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_percentage_common.pdf"), p)
 
 
 p = ggplot(common_i, aes(x = umi)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRi_hist_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_common.pdf"), p)
 
 p = p + coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRi_hist_15_1000_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_15_1000_common.pdf"), p)
 
 p = ggplot(common_i, aes(x = percentage)) + 
   geom_histogram(binwidth = 1)
-ggsave(paste0("./CRISPRi_hist_percentage_common.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_percentage_common.pdf"), p)
 
 
 p = ggplot(CRISPR, aes(x = percentage, y = umi))+
   geom_count(alpha = 0.1, colour = "blue", fill = "blue") +
   scale_y_log10() +
   facet_wrap(vars(feature))
-ggsave(paste0("./2D_CRISPR_facet.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_CRISPR_facet.pdf"), p, width = 20, height = 10)
 
 #FIND thresholds a
 # histogram
@@ -359,13 +361,13 @@ p = ggplot(crispra_df, aes(x = umi)) +
   geom_histogram(binwidth = 1)+
   geom_vline(xintercept = main_valley_x, col = "red")#+ 
   #coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRa_hist_threshold.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_threshold.pdf"), p)
 
 p = ggplot(crispra_df, aes(x = umi)) + 
   geom_histogram(bins = 2000)+
   geom_vline(xintercept = main_valley_x, col = "red")#+ 
 #coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRa_hist_threshold_2000bins.pdf"), p)
+ggsave(paste0(dir, "./CRISPRa_hist_threshold_2000bins.pdf"), p)
 
 crispra_df = mutate(crispra_df, TorF = case_when(umi > main_valley_x ~ TRUE, .default = F))
 
@@ -374,7 +376,7 @@ p = ggplot(crispra_df, aes(x = percentage, y = umi, colour = TorF))+
   geom_count(alpha = 0.2) +
   scale_y_log10()+ 
   geom_hline(yintercept=main_valley_x, colour = "red")
-ggsave(paste0("./2D_crispra_threshold.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_crispra_threshold.pdf"), p, width = 20, height = 10)
 
 sum(crispra_df$TorF)
 
@@ -423,13 +425,13 @@ p = ggplot(crispri_df, aes(x = umi)) +
   geom_histogram(binwidth = 1)+
   geom_vline(xintercept = main_valley_x, col = "red")#+ 
 #coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRi_hist_threshold.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_threshold.pdf"), p)
 
 p = ggplot(crispri_df, aes(x = umi)) + 
   geom_histogram(bins = 2000)+
   geom_vline(xintercept = main_valley_x, col = "red")#+ 
 #coord_cartesian(xlim = c(0,1000) ,ylim = c(0, 15)) 
-ggsave(paste0("./CRISPRi_hist_threshold_2000bins.pdf"), p)
+ggsave(paste0(dir, "./CRISPRi_hist_threshold_2000bins.pdf"), p)
 
 
 crispri_df = mutate(crispri_df, TorF = case_when(umi > main_valley_x ~ TRUE, .default = F))
@@ -439,7 +441,7 @@ p = ggplot(crispri_df, aes(x = percentage, y = umi, colour = TorF))+
   geom_count(alpha = 0.2) +
   scale_y_log10()+ 
   geom_hline(yintercept=main_valley_x, colour = "red")
-ggsave(paste0("./2D_crispri_threshold.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_crispri_threshold.pdf"), p, width = 20, height = 10)
 
 sum(crispri_df$TorF)
 
@@ -473,9 +475,9 @@ p = ggplot(common, aes(x = percentage, y = umi, colour = CIRI))+
   geom_count(alpha = 0.2) +
   scale_y_log10()+ 
   facet_wrap(vars(feature))
-ggsave(paste0("./2D_CIRI_threshold.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./2D_CIRI_threshold.pdf"), p, width = 20, height = 10)
 
-write.csv(common, "./all_cells_CIRI.csv")
+write.csv(common, paste0(dir, "./all_cells_CIRI.csv"))
 
 
 #### check variable I guide distribution 
@@ -524,7 +526,7 @@ p = ggplot(df_ratio, aes(x = ratio, fill = type)) +
     x = "Ratio (Top1 / Top2)",
     y = "Count"
   )
-ggsave(paste0("./ratio_secondary_guides.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./ratio_secondary_guides.pdf"), p, width = 20, height = 10)
 
 p = ggplot(df_ratio, aes(x = ratio, fill = type)) +
   geom_histogram(binwidth = 0.1, position = "identity") +
@@ -536,7 +538,7 @@ p = ggplot(df_ratio, aes(x = ratio, fill = type)) +
     x = "Ratio (Top1 / Top2)",
     y = "Count"
   )
-ggsave(paste0("./ratio_secondary_guides_zoom.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./ratio_secondary_guides_zoom.pdf"), p, width = 20, height = 10)
 
 p = ggplot(df_ratio, aes(x = top1, fill = type)) +
   geom_histogram(binwidth = 1, position = "identity") +
@@ -548,7 +550,7 @@ p = ggplot(df_ratio, aes(x = top1, fill = type)) +
     x = "UMIs",
     y = "Count"
   )
-ggsave(paste0("./top_guide_hist.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./top_guide_hist.pdf"), p, width = 20, height = 10)
 
 p = ggplot(df_ratio, aes(x = top2, fill = type)) +
   geom_histogram(binwidth = 1, position = "identity") +
@@ -560,7 +562,7 @@ p = ggplot(df_ratio, aes(x = top2, fill = type)) +
     x = "UMIs",
     y = "Count"
   )
-ggsave(paste0("./second_top_guide_hist.pdf"), p, width = 20, height = 10)
+ggsave(paste0(dir, "./second_top_guide_hist.pdf"), p, width = 20, height = 10)
 
 # Reshape data: put top1 and top2 into one column
 tmp <- df_ratio %>%
@@ -580,7 +582,7 @@ p <- ggplot(tmp, aes(x = UMIs, fill = rank)) +
     y = "Count"
   )
 
-ggsave("./top_guides_overlay_hist.pdf", p, width = 20, height = 10)
+ggsave(paste0(dir, "./top_guides_overlay_hist.pdf"), p, width = 20, height = 10)
 
 ### Filter for ratio >= 5 and UMI >= 10 
 assigned = merge(df_ratio, distinct(common[, c("cell_barcode", "CIRI", "CRISPRa", "CRISPRi")]), by = c("cell_barcode"))
@@ -615,11 +617,11 @@ assigned_filtered = left_join(assigned_filtered, CIRI_sec[, c("cell_barcode","fe
 
 counts = as.data.frame(table(distinct(assigned_filtered[c("cell_barcode", "feature")])$feature)) %>%
   arrange(desc(Freq))
-write.csv(counts, file = "./features_count.csv")
+write.csv(counts, file = paste0(dir, "./features_count.csv"))
 
 counts_CIRI = as.data.frame(table(distinct(filter(assigned_filtered, CIRI == T)[c("cell_barcode", "feature")])$feature)) %>%
   arrange(desc(Freq))
-write.csv(counts_CIRI, file = "./features_count_CIRI.csv")
+write.csv(counts_CIRI, file = paste0(dir, "./features_count_CIRI.csv"))
 
 assigned_wide <- assigned_filtered %>%
   mutate(feature_col = paste0("feature_", type),
@@ -634,7 +636,7 @@ assigned_counts <- assigned_wide %>%
   group_by(feature_a, feature_i) %>%
   summarise(n_cells = n(), .groups = "drop") %>%
   arrange(desc(n_cells))
-write.csv(assigned_counts, file = "./combinations_counts.csv")
+write.csv(assigned_counts, file = paste0(dir, "./combinations_counts.csv"))
 
 assigned_wide = left_join(assigned_wide, all_wide, by = "cell_barcode")
 
@@ -661,61 +663,15 @@ assigned_counts_CIRI <- filter(assigned_wide, CIRI == T) %>%
   group_by(feature_a, feature_i) %>%
   summarise(n_cells = n(), .groups = "drop") %>%
   arrange(desc(n_cells))
-write.csv(assigned_counts_CIRI, file = "./combinations_counts_CIRI.csv")
+write.csv(assigned_counts_CIRI, file = paste0(dir, "./combinations_counts_CIRI.csv"))
 
 sum(assigned_wide$CIRI)
 sum(assigned_wide$CIRI == FALSE & assigned_wide$CRISPRa == TRUE)
 sum(assigned_wide$CIRI == FALSE & assigned_wide$CRISPRi == TRUE)
 
-write.csv(assigned_wide, "annotation_data.csv")
+write.csv(assigned_wide, paste0(dir, "annotation_data.csv"))
 
-library(rCASC)
-h5tocsv(
-  group = "docker",
-  file = "./filtered_feature_bc_matrix.h5",
-  type = "h5",
-  version = "5"
-)
 
-mitoRiboUmi(
-  group = "docker",
-  scratch.folder = "/Users/marialuisaratto/scripts/scratch/",
-  file = "/Users/marialuisaratto/scripts/CIRI/filtered_feature_bc_matrix.csv",
-  separator = ",",
-  gtf.name = "Homo_sapiens.GRCh38.101.gtf",
-  bio.type = "protein_coding",
-  umiXgene = 3
-)
-
-scannobyGtf(
-  group = "docker",
-  file = "/Users/marialuisaratto/scripts/CIRI/RiboMito/filtered_feature_bc_matrix.csv",
-  gtf.name= "Homo_sapiens.GRCh38.101.gtf",
-  biotype = "protein_coding",
-  mt =F,
-  ribo.proteins =F,
-  umiXgene = 3,
-  riboStart.percentage = 0,
-  riboEnd.percentage = 100,
-  mitoStart.percentage = 1,
-  mitoEnd.percentage = 100,
-  thresholdGenes = 250
-)
-
-scannobyGtf(
-  group = "docker",
-  file = "/30tb/3tb/data/ratto/AB11_screening_CRISPR/EB_analysis/scratch/filtered_feature_bc_matrix.csv",
-  gtf.name= "Homo_sapiens.GRCh38.101.gtf",
-  biotype = "protein_coding",
-  mt =F,
-  ribo.proteins =F,
-  umiXgene = 3,
-  riboStart.percentage = 0,
-  riboEnd.percentage = 100,
-  mitoStart.percentage = 0,
-  mitoEnd.percentage = 20,
-  thresholdGenes = 250
-)
 
 exp = read.csv("./filtered_annotated_filtered_feature_bc_matrix.csv", row.names = 1)
 
@@ -733,378 +689,4 @@ name_map <- setNames(assigned_wide$new_names, assigned_wide$cell_barcode)
 colnames(exp) <- name_map[colnames(exp)]
 
 write.csv(exp, "annotated_matrix.csv")
-
-
-
-
-
-
-
-#secondary analysis load 
-suppressMessages(library(devtools))
-suppressMessages(library(monocle3))
-suppressMessages(library(tidyverse))
-suppressMessages(library(ggplot2))
-suppressMessages(library(gtools))
-suppressMessages(library(dplyr))
-set.seed(1234597698)
-
-dir = "."
-file = "annotated_matrix.csv"
-res = 3e-4
-#exp$X = rownames(exp)
-
-#LOAD ANNOTATED GENE EXP
-#exp = read.csv("/30tb/3tb/data/ratto/testing/annotated_silencing_matrix_complete_all_samples.csv", header = T)
-exp = read.csv(paste0(dir,"/", file), header = T)
-exp = exp[, colSums(exp != 0) > 0]
-exp <- separate(
-  exp,
-  col="X",
-  into=c("a","b"),
-  sep = ":",
-  remove = TRUE,
-  convert = FALSE,
-  extra = "warn",
-  fill = "warn"
-)
-exp$a <- NULL
-names <- make.unique(exp$b, sep=".")
-rownames(exp) <- names
-exp$b <- NULL
-
-#CREATE ANNOTATION DATAFRAME
-data = data.frame()
-data = as.data.frame(colnames(exp))
-colnames(data) = c("nomi")
-rownames(data)=data$nomi
-data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "\\.", remove = F, convert = T)
-data = mutate(data, comb = paste(guide_a, guide_i, sep = "_"))
-data <- data %>%
-  mutate(gene_a = sapply(strsplit(guide_a, "_"), `[`, 1))
-data <- data %>%
-  mutate(gene_i = sapply(strsplit(guide_i, "_"), `[`, 1))
-data = mutate(data, gene_comb = paste(gene_a, gene_i, sep = "_"))
-
-data <- data %>%
-  mutate(
-    type = case_when(
-      !is.na(guide_a) & !is.na(guide_i) ~ "CIRI",
-      !is.na(guide_a) &  is.na(guide_i) ~ "CRISPRa",
-      is.na(guide_a) & !is.na(guide_i) ~ "CRISPRi",
-      TRUE ~ NA_character_
-    )
-  )
-
-#update names
-data = mutate(data, nomi = paste(nomi, gene_a, gene_i, gene_comb, type, sep = "."))
-rownames(data) = data$nomi
-
-#ORDER IN SAME WAY MATRIX AND ANNOTATION 
-data_complete = exp[, order(colnames(exp))]
-data = data[order(row.names(data)), ]
-colnames(data_complete) = row.names(data)
-
-#save data
-write.csv(data_complete, paste(dir, "/espression_data.csv",sep=""))
-write.csv(data, paste(dir, "/cell_metadata.csv",sep=""))
-
-#CREATE MONOCLE DATASET
-data_matrix = as.matrix(data_complete)
-starting_cds <- new_cell_data_set(expression_data = data_matrix,
-                                  cell_metadata = data,
-                                  gene_metadata = NULL)
-# Save dataframe as an RData file
-save(starting_cds, file = paste0(dir, "/starting_cds.RData"))
-
-#NORMALIZE for size and log
-norm = normalized_counts(
-  starting_cds#,norm_method = "log",pseudocount = 1
-)
-
-cds <- new_cell_data_set(expression_data = norm,
-                         cell_metadata = data,
-                         gene_metadata = NULL)
-
-cds <- preprocess_cds(cds, num_dim = 20)
-p = plot_pc_variance_explained(cds)
-ggsave(p, filename = paste0(dir,"/PCA.pdf"),
-       width = 5, height = 5)
-#cds <- align_cds(cds, alignment_group = "replicate", useNames = TRUE)
-cds <- reduce_dimension(cds, reduction_method="UMAP", umap.fast_sgd = FALSE,cores=1,n_sgd_threads=1)
-
-UMAP = as.data.frame(reducedDims(cds)$UMAP)
-names(UMAP) = c("x", "y")
-UMAP$nomi = rownames(UMAP)
-UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a", "guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
-UMAP$sample = as.factor(UMAP$sample)
-p = ggplot(UMAP, aes(x, y, color = sample, alpha = 0.1)) +
-  geom_point(size = 0.4)
-ggsave(p, filename = paste0(dir,"/UMAP.pdf"),
-       width = 6, height = 6)
-
-#Plot by type
-p = ggplot(UMAP, aes(x, y, color = type, alpha = 0.1)) +
-  geom_point(size = 0.4)
-ggsave(p, filename = paste0(dir,"/UMAP_type.pdf"),
-       width = 6, height = 6)
-
-p = ggplot(UMAP, aes(x, y, color = type, alpha = 0.1)) +
-  geom_point(size = 0.4) + 
-  facet_wrap(vars(type))
-ggsave(p, filename = paste0(dir,"/UMAP_type_facet.pdf"),
-       width = 18, height = 6)
-
-#Plot by guide 
-p = ggplot(UMAP, aes(x, y, color = guide_a, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(type))
-ggsave(p, filename = paste0(dir,"/UMAP_guide_a.pdf"),
-       width = 18, height = 6)
-
-p = ggplot(UMAP, aes(x, y, color = guide_i, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(type))
-ggsave(p, filename = paste0(dir,"/UMAP_guide_i.pdf"),
-       width = 18, height = 6)
-
-#Plot by gene
-p = ggplot(UMAP, aes(x, y, color = gene_a, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(type))
-ggsave(p, filename = paste0(dir,"/UMAP_gene_a.pdf"),
-       width = 18, height = 6)
-
-p = ggplot(UMAP, aes(x, y, color = gene_i, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(type))
-ggsave(p, filename = paste0(dir,"/UMAP_gene_i.pdf"),
-       width = 18, height = 6)
-
-#Plot CIRI by gene comb
-tmp = filter(UMAP, type == "CIRI")
-p = ggplot(tmp, aes(x, y, color = gene_i, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(gene_a))
-ggsave(p, filename = paste0(dir,"/UMAP_facet_a_color_i.pdf"),
-       width = 12, height = 9)
-
-p = ggplot(tmp, aes(x, y, color = gene_a, alpha = 0.1)) +
-  geom_point(size = 0.4)+ 
-  facet_wrap(vars(gene_i))
-ggsave(p, filename = paste0(dir,"/UMAP_facet_i_color_a.pdf"),
-       width = 12, height = 9)
-
-#PLOT GENE EXPRESSION
-genes = "genes_of_interest.txt"
-glist = c(unique(t(read.delim(paste0(dir, "/", genes), sep = ",", header = F))))
-#put gene names in $gene_short_name to solve bug
-rowData(cds)$gene_name <- rownames(cds)
-rowData(cds)$gene_short_name <- rowData(cds)$gene_name
-
-p = plot_cells(cds,
-               genes = glist,
-               label_cell_groups = T,
-               show_trajectory_graph = FALSE)+
-  labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
-#scale_color_viridis(option="E", discrete=F)
-
-ggsave(p, filename = paste0(dir,"/UMAP_gene_expression.pdf"),
-       width = 10, height = 10)
-
-p = plot_cells(cds,
-               genes = c(unique(data$gene_a), unique(data$gene_i)),
-               label_cell_groups = T,
-               show_trajectory_graph = FALSE)+
-  labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
-#scale_color_viridis(option="E", discrete=F)
-
-ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR.pdf"),
-       width = 10, height = 10)
-
-#CLUSTERING
-cds <- cluster_cells(cds, resolution=res, random_seed = 42)
-p = plot_cells(cds)
-ggsave(p, filename = paste0(dir,"/UMAP_clustering.pdf"),
-       width = 5, height = 5)
-colData(cds)$clusters = clusters(cds)
-
-
-#trajectories
-print("Learning trajectories...")
-cds <- learn_graph(cds)
-p = plot_cells(cds,
-               color_cells_by = "cluster",
-               label_groups_by_cluster=FALSE,
-               label_leaves=FALSE,
-               label_branch_points=FALSE)
-ggsave(p, filename = paste0(dir,"/UMAP_clustering_trajectories.pdf"),
-       width = 5, height = 5)
-
-# Save dataas an RData file
-save(cds, file = paste0(dir, "/processed_cds.RData"))
-
-#MARKER GENES
-print("Finding clusters marker genes...")
-marker_test_res <- top_markers(cds, group_cells_by="cluster",
-                               reference_cells=1000, cores=8)
-
-top_specific_markers <- marker_test_res %>%
-  filter(fraction_expressing >= 0.10) %>%
-  group_by(cell_group) %>%
-  top_n(1, pseudo_R2)
-
-top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
-#save data
-write.csv(marker_test_res, paste(dir, "/gene_markers.csv",sep=""))
-write.csv(top_specific_markers, paste(dir, "/top1_gene_markers.csv",sep=""))
-
-p = plot_cells(cds,
-               genes = unique(top_specific_markers$gene_id),
-               label_cell_groups = T,
-               show_trajectory_graph = FALSE)+
-  labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
-#scale_color_viridis(option="E", discrete=F)
-
-ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_top_markers.pdf"),
-       width = 10, height = 10)
-
-print("Done!")
-
-
-
-#### enrichment / depletion 
-min_cells_cluster = 40
-
-#calculate cells x cluster and filter if too few
-colData(cds)$clusters = clusters(cds)
-df = as.data.frame(colData(cds))
-cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>% 
-  group_by(clusters) %>%
-  mutate(cellsxcluster = n()) 
-
-cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
-print(cellsxcluster)
-print(paste0("Min cells per clusters: ", min_cells_cluster))
-print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
-cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
-df = filter(df, clusters %in% cellsxcluster$clusters)
-
-
-# Calculate the number of cells per cluster and condition a 
-cluster_condition_counts_a <- df %>%
-  group_by(sample, clusters, gene_a) %>%
-  summarise(count = n(), .groups = "drop")
-
-cluster_condition_percentages_a <- cluster_condition_counts_a %>%
-  group_by(sample, clusters) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-# Plot
-p <- ggplot(cluster_condition_percentages_a, aes(x = factor(sample), y = percentage, fill = gene_a)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  theme_minimal() +  
-  facet_grid(~clusters)
-
-ggsave(p, filename = paste0(dir, "/gene_a_in_clusters.pdf"), width = 20, height = 10)
-
-
-# Calculate the number of cells per cluster and condition i
-cluster_condition_counts_i <- df %>%
-  group_by(sample, clusters, gene_i) %>%
-  summarise(count = n(), .groups = "drop")
-
-cluster_condition_percentages_i <- cluster_condition_counts_i %>%
-  group_by(sample, clusters) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-# Plot
-p <- ggplot(cluster_condition_percentages_i, aes(x = factor(sample), y = percentage, fill = gene_i)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  theme_minimal() +  
-  facet_grid(~clusters)
-
-ggsave(p, filename = paste0(dir, "/gene_i_in_clusters.pdf"), width = 20, height = 10)
-
-# Other way around 
-# Counts per sample, gene_a, and cluster
-gene_a_cluster_counts <- df %>%
-  group_by(sample, gene_a, clusters) %>%
-  summarise(count = n(), .groups = "drop")
-
-# Percentages of clusters within each sample + gene_a
-gene_a_cluster_percentages <- gene_a_cluster_counts %>%
-  group_by(sample, gene_a) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p <- ggplot(gene_a_cluster_percentages, 
-            aes(x = factor(sample), y = percentage, fill = clusters)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  theme_minimal() +
-  facet_grid(~gene_a) +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Cluster")
-
-ggsave(p, filename = paste0(dir, "/clusters_within_gene_a.pdf"), 
-       width = 20, height = 10)
-
-# Counts per sample, gene_i, and cluster
-gene_i_cluster_counts <- df %>%
-  group_by(sample, gene_i, clusters) %>%
-  summarise(count = n(), .groups = "drop")
-
-# Percentages of clusters within each sample + gene_i
-gene_i_cluster_percentages <- gene_i_cluster_counts %>%
-  group_by(sample, gene_i) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p <- ggplot(gene_i_cluster_percentages, 
-            aes(x = factor(sample), y = percentage, fill = clusters)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  theme_minimal() +
-  facet_grid(~gene_i) +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Cluster")
-
-ggsave(p, filename = paste0(dir, "/clusters_within_gene_i.pdf"), 
-       width = 20, height = 10)
-
-#REGRESSION
-print("regression...")
-# Fit models for perturbations GENE
-gene_fits <- fit_models(cds, model_formula_str = paste0("~gene_a"))
-print("genes fitted for genes a...")
-# Extract coefficient tables and adjust with BH
-fit_coefs <- coefficient_table(gene_fits)
-
-regression = fit_coefs %>% filter(term != "(Intercept)")
-regression = regression %>% filter (q_value < 0.05) %>%
-  select(gene_short_name, term, q_value, estimate)
-write.csv(regression, file= paste0(dir,"/regression_filtered_genes_per_gene_a.csv"), row.names=FALSE)
-
-gene_fits <- fit_models(cds, model_formula_str = paste0("~gene_i"))
-print("genes fitted for genes i...")
-# Extract coefficient tables and adjust with BH
-fit_coefs <- coefficient_table(gene_fits)
-
-regression = fit_coefs %>% filter(term != "(Intercept)")
-regression = regression %>% filter (q_value < 0.05) %>%
-  select(gene_short_name, term, q_value, estimate)
-write.csv(regression, file= paste0(dir,"/regression_filtered_genes_per_gene_i.csv"), row.names=FALSE)
-
-gene_fits <- fit_models(cds, model_formula_str = paste0("~gene_a + gene_i"))
-print("genes fitted for genes a + i...")
-# Extract coefficient tables and adjust with BH
-fit_coefs <- coefficient_table(gene_fits)
-
-regression = fit_coefs %>% filter(term != "(Intercept)")
-regression = regression %>% filter (q_value < 0.05) %>%
-  select(gene_short_name, term, q_value, estimate)
-write.csv(regression, file= paste0(dir,"/regression_filtered_genes_per_gene_a_and_i.csv"), row.names=FALSE)
 

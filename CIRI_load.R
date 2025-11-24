@@ -1,16 +1,5 @@
-# load 
-suppressMessages(library(devtools))
-suppressMessages(library(monocle3))
-suppressMessages(library(tidyverse))
-suppressMessages(library(ggplot2))
-suppressMessages(library(gtools))
-suppressMessages(library(dplyr))
-suppressMessages(library(Seurat))
-suppressMessages(library(viridis))
-suppressMessages(library(ggrepel))
-set.seed(1234597698)
 
-dir = "."
+dir = "/Users/marialuisaratto/scripts/CIRI/"
 file = "annotated_matrix.csv"
 res = 0.5e-4
 #exp$X = rownames(exp)
@@ -18,21 +7,25 @@ res = 0.5e-4
 #LOAD ANNOTATED GENE EXP
 #exp = read.csv("/30tb/3tb/data/ratto/testing/annotated_silencing_matrix_complete_all_samples.csv", header = T)
 exp = read.csv(paste0(dir,"/", file), header = T)
-exp = exp[, colSums(exp != 0) > 0]
-exp <- separate(
-  exp,
-  col="X",
-  into=c("a","b"),
-  sep = ":",
-  remove = TRUE,
-  convert = FALSE,
-  extra = "warn",
-  fill = "warn"
-)
-exp$a <- NULL
-names <- make.unique(exp$b, sep=".")
-rownames(exp) <- names
-exp$b <- NULL
+rownames(exp) = exp$X
+exp$X = NULL
+#exp$X = rownames(exp)
+# exp = exp[, colSums(exp != 0) > 0]
+# exp <- separate(
+#   exp,
+#   col="X",
+#   into=c("a","b"),
+#   sep = ":",
+#   remove = TRUE,
+#   convert = FALSE,
+#   extra = "warn",
+#   fill = "warn"
+# )
+# exp$a <- NULL
+# names <- make.unique(exp$b, sep=".")
+# rownames(exp) <- names
+# exp$b <- NULL
+
 
 #CREATE ANNOTATION DATAFRAME
 data = data.frame()
@@ -268,4 +261,4 @@ p = plot_cells(cds,
 ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_top_markers.pdf"),
        width = 10, height = 10)
 
-print("Done!")
+#############
