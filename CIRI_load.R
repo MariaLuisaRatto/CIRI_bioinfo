@@ -1,7 +1,22 @@
+#secondary analysis load 
+suppressMessages(library(devtools))
+suppressMessages(library(monocle3))
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggplot2))
+suppressMessages(library(gtools))
+suppressMessages(library(dplyr))
+suppressMessages(library(Seurat))
+suppressMessages(library(viridis))
+suppressMessages(library(ggrepel))
+set.seed(1234597698)
 
-dir = "/Users/marialuisaratto/scripts/CIRI/"
+
+dir = "."
 file = "annotated_matrix.csv"
-res = 0.5e-4
+#res = 0.5e-4
+#for 1 guide
+res = 0.1e-4
+#for 2 guides
 #exp$X = rownames(exp)
 
 #LOAD ANNOTATED GENE EXP
@@ -32,20 +47,45 @@ data = data.frame()
 data = as.data.frame(colnames(exp))
 colnames(data) = c("nomi")
 rownames(data)=data$nomi
-data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "\\.", remove = F, convert = T)
-data = mutate(data, comb = paste(guide_a, guide_i, sep = "-"))
-data <- data %>%
-  mutate(gene_a = sapply(strsplit(guide_a, "_"), `[`, 1))
-data <- data %>%
-  mutate(gene_i = sapply(strsplit(guide_i, "_"), `[`, 1))
-data = mutate(data, gene_comb = paste(gene_a, gene_i, sep = "-"))
+
+num_pieces <- length(strsplit(data$nomi, "\\.")[[1]])
+if(num_pieces <= 4){
+  data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "\\.", remove = F, convert = T)
+  data = mutate(data, comb = paste(guide_a, guide_i, sep = "-"))
+  data <- data %>%
+    mutate(gene_a = sapply(strsplit(guide_a, "_"), `[`, 1))
+  data <- data %>%
+    mutate(gene_i = sapply(strsplit(guide_i, "_"), `[`, 1))
+  data = mutate(data, gene_comb = paste(gene_a, gene_i, sep = "-"))
+} else if(num_pieces  > 4){
+  # Split into max 6 parts; if fewer, fill with NA instead of shifting
+  data <- separate(
+    data,
+    nomi,
+    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2"),
+    sep = "\\.",
+    remove = FALSE,
+    convert = TRUE,
+    fill = "right"   # <-- important: pads missing with NA instead of shifting
+  )
+  
+  data = mutate(data, comb = paste0(guide_a1,";", guide_a2,"-", guide_i1, ";", guide_i2))
+  data <- data %>%
+    mutate(gene_a = sapply(strsplit(guide_a1, "_"), `[`, 1))
+  data <- data %>%
+    mutate(gene_i = sapply(strsplit(guide_i1, "_"), `[`, 1))
+  data = mutate(data, gene_comb = paste0(gene_a, "-", gene_i))
+  
+  data = mutate(data, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+  data = mutate(data, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+}
 
 data <- data %>%
   mutate(
     type = case_when(
-      !is.na(guide_a) & !is.na(guide_i) ~ "CIRI",
-      !is.na(guide_a) &  is.na(guide_i) ~ "CRISPRa",
-      is.na(guide_a) & !is.na(guide_i) ~ "CRISPRi",
+      !is.na(gene_a) & !is.na(gene_i) ~ "CIRI",
+      !is.na(gene_a) &  is.na(gene_i) ~ "CRISPRa",
+      is.na(gene_a) & !is.na(gene_i) ~ "CRISPRi",
       TRUE ~ NA_character_
     )
   )
@@ -262,3 +302,4 @@ ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_top_markers.pdf"),
        width = 10, height = 10)
 
 #############
+

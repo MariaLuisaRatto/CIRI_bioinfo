@@ -174,7 +174,14 @@ assigned_wide = read.csv("./annotation_data.csv")
 mat = mat[, colnames(mat) %in% assigned_wide$cell_barcode]
 
 # Create a named vector: old -> new
-assigned_wide = mutate(assigned_wide, new_names = paste0(cell_barcode, "-", feature_a, "-", feature_i))
+assigned_wide <- assigned_wide %>%
+  mutate(
+    new_names = paste0(
+      cell_barcode, "-",
+      ifelse(is.na(feature_a), "NA;NA", feature_a), "-",
+      ifelse(is.na(feature_i), "NA;NA", feature_i)
+    )
+  )
 name_map <- setNames(assigned_wide$new_names, assigned_wide$cell_barcode)
 
 # Replace column names in exp

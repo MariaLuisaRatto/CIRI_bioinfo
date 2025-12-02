@@ -1,365 +1,394 @@
-##Plot subclusters 
-## Function to subset clusters and generate UMAP plots
-analyze_clusters <- function(cds, clusters_to_keep, group_name, dir, res = 1e-2) {
+#secondary analysis
+suppressMessages(library(devtools))
+suppressMessages(library(monocle3))
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggplot2))
+suppressMessages(library(gtools))
+suppressMessages(library(dplyr))
+suppressMessages(library(Seurat))
+suppressMessages(library(viridis))
+suppressMessages(library(ggrepel))
+suppressMessages(library(colorspace))
+set.seed(1234597698)
+
+dir = "."
+ccs = c("4")
+group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
+g = "SOX2"
+
+load(paste0(dir, "/processed_cds.Rdata"))
+clusters_to_keep = ccs
+group_name = "muscle"
+#res = 0.1e-2
+res = 1e-4
   
-  # ---- Subset CDS ----
-  cds_sub <- cds[, colData(cds)$clusters %in% clusters_to_keep]
-  
-  # ---- Save original clusters ----
-  colData(cds_sub)$clusters_main <- colData(cds_sub)$clusters
-  
-  # ---- Re-run preprocessing & subclustering ----
-  cds_sub <- preprocess_cds(cds_sub, num_dim = 50)
-  cds_sub <- reduce_dimension(cds_sub, reduction_method = "UMAP")
-  cds_sub <- cluster_cells(cds_sub, resolution = res, random_seed = 42)
-  
-  # Save subclusters separately
-  colData(cds_sub)$clusters_sub <- clusters(cds_sub)
-  
-  # ---- Plot by main clusters ----
-  p_main <- plot_cells(
-    cds_sub,
-    color_cells_by = "clusters_main",
-    show_trajectory_graph = FALSE,
-    label_cell_groups = TRUE,
-    label_leaves = FALSE,
-    label_branch_points = FALSE
-  )
-  ggsave(p_main, filename = paste0(dir, "/UMAP_", group_name, "_mainclusters.pdf"),
-         width = 5, height = 4)
-  
-  # ---- Plot by subclusters ----
-  p_sub <- plot_cells(
-    cds_sub,
-    color_cells_by = "clusters_sub",
-    show_trajectory_graph = FALSE,
-    label_cell_groups = TRUE,
-    label_leaves = FALSE,
-    label_branch_points = FALSE
-  )
-  ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_subclusters.pdf"),
-         width = 5, height = 4)
-  
-  
-  # ---- Extract UMAP coordinates ----
-  UMAP_sub <- as.data.frame(reducedDims(cds_sub)$UMAP)
-  names(UMAP_sub) <- c("x", "y")
-  UMAP_sub$nomi <- rownames(UMAP_sub)
-  UMAP_sub <- separate(UMAP_sub, nomi,
-                       into = c("cellID","sample", "guide_a", "guide_i", 
-                                "gene_a", "gene_i", "gene_comb", "type"),
-                       sep = "\\.", remove = FALSE, convert = TRUE)
-  UMAP_sub$sample <- as.factor(UMAP_sub$sample)
-  
-  # ---- Base UMAP plots ----
-  p <- ggplot(UMAP_sub, aes(x, y, color = sample, alpha = 0.1)) +
-    geom_point(size = 0.4) +
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$sample)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_", group_name, ".pdf"),
-         width = 5, height = 4)
-  
-  # ---- By type ----
-  p <- ggplot(UMAP_sub, aes(x, y, color = type, alpha = 0.1)) +
-    geom_point(size = 0.4)+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$type)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_type_", group_name, ".pdf"),
-         width = 5, height = 4)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = type, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$type)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_type_facet_", group_name, ".pdf"),
-         width = 18, height = 6)
-  
-  # ---- By guides ----
-  p <- ggplot(UMAP_sub, aes(x, y, color = guide_a, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$guide_a)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_guide_a_", group_name, ".pdf"),
-         width = 18, height = 6)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = guide_i, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$guide_i)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_guide_i_", group_name, ".pdf"),
-         width = 9, height = 3)
-  
-  # ---- By genes ----
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_gene_a_", group_name, ".pdf"),
-         width = 9, height = 3)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type, gene_a))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_gene_a_facet_", group_name, ".pdf"),
-         width = 9, height = 9)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_gene_i_", group_name, ".pdf"),
-         width = 9, height = 3)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(type, gene_i))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_gene_i_facet_", group_name, ".pdf"),
-         width = 9, height = 9)
-  
-  # ---- By gene combinations ----
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(gene_a))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_facet_a_color_i_", group_name, ".pdf"),
-         width = 6, height = 5)
-  
-  p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
-    geom_point(size = 0.4) + facet_wrap(vars(gene_i))+
-    scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
-  ggsave(p, filename = paste0(dir, "/UMAP_facet_i_color_a_", group_name, ".pdf"),
-         width = 6, height = 5)
-  
-  # ---- Marker genes for subclusters ----
-  message("Finding marker genes for subclusters...")
-  marker_test_res <- top_markers(
-    cds_sub,
-    group_cells_by = "clusters_sub",
-    reference_cells = 1000,
-    cores = 8
+# ---- Subset CDS ----
+cds_sub <- cds[, colData(cds)$clusters %in% clusters_to_keep]
+
+# ---- Save original clusters ----
+colData(cds_sub)$clusters_main <- colData(cds_sub)$clusters
+
+# ---- Re-run preprocessing & subclustering ----
+cds_sub <- preprocess_cds(cds_sub, num_dim = 50)
+cds_sub <- reduce_dimension(cds_sub, reduction_method = "UMAP")
+cds_sub <- cluster_cells(cds_sub, resolution = res, random_seed = 42)
+
+# Save subclusters separately
+colData(cds_sub)$clusters_sub <- clusters(cds_sub)
+
+# ---- Plot by main clusters ----
+p_main <- plot_cells(
+  cds_sub,
+  color_cells_by = "clusters_main",
+  show_trajectory_graph = FALSE,
+  label_cell_groups = TRUE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE
+)
+ggsave(p_main, filename = paste0(dir, "/UMAP_", group_name, "_mainclusters.pdf"),
+       width = 5, height = 4)
+
+# ---- Plot by subclusters ----
+p_sub <- plot_cells(
+  cds_sub,
+  color_cells_by = "clusters_sub",
+  show_trajectory_graph = FALSE,
+  label_cell_groups = TRUE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE
+)
+ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_subclusters.pdf"),
+       width = 5, height = 4)
+
+
+# ---- Extract UMAP coordinates ----
+UMAP_sub <- as.data.frame(reducedDims(cds_sub)$UMAP)
+names(UMAP_sub) <- c("x", "y")
+UMAP_sub$nomi <- rownames(UMAP_sub)
+num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
+#AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
+
+if(num_pieces < 10){
+  UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+} else if(num_pieces == 10){
+  # Split into max 6 parts; if fewer, fill with NA instead of shifting
+  UMAP_sub <- separate(
+    UMAP_sub,
+    nomi,
+    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2","gene_a", "gene_i", "gene_comb", "type"),
+    sep = "\\.",
+    remove = FALSE,
+    convert = TRUE,
+    fill = "right"   # <-- important: pads missing with NA instead of shifting
   )
   
-  top_specific_markers <- marker_test_res %>%
-    filter(fraction_expressing >= 0.10) %>%
-    group_by(cell_group) %>%
-    top_n(1, pseudo_R2)
+  UMAP_sub = mutate(UMAP_sub, comb = paste0(guide_a1,";", guide_a2,"-", guide_i1, ";", guide_i2))
+  UMAP_sub <- UMAP_sub %>%
+    mutate(gene_a = sapply(strsplit(guide_a1, "_"), `[`, 1))
+  UMAP_sub <- UMAP_sub %>%
+    mutate(gene_i = sapply(strsplit(guide_i1, "_"), `[`, 1))
+  UMAP_sub = mutate(UMAP_sub, gene_comb = paste0(gene_a, "-", gene_i))
   
-  top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
-  
-  # Save data
-  write.csv(marker_test_res,
-            paste0(dir, "/gene_markers_", group_name, ".csv"),
-            row.names = FALSE)
-  write.csv(top_specific_markers,
-            paste0(dir, "/top1_gene_markers_", group_name, ".csv"),
-            row.names = FALSE)
-  
-  # Plot expression of top markers
-  p <- plot_cells(
-    cds_sub,
-    genes = unique(top_specific_marker_ids),
-    label_cell_groups = TRUE,
-    show_trajectory_graph = FALSE
-  ) + labs(x = "UMAP 1", y = "UMAP 2", title = paste0("Top markers - ", group_name))
-  
-  ggsave(p, filename = paste0(dir, "/UMAP_top_markers_", group_name, ".pdf"),
-         width = 9, height = 9)
-  
-  #PLOT GENE EXPRESSION
-  genes = "genes_of_interest.txt"
-  glist = c(unique(t(read.delim(paste0(dir, "/", genes), sep = ",", header = F))))
-  #put gene names in $gene_short_name to solve bug
-  rowData(cds_sub)$gene_name <- rownames(cds_sub)
-  rowData(cds_sub)$gene_short_name <- rowData(cds_sub)$gene_name
-  
-  p = plot_cells(cds_sub,
-                 genes = glist,
-                 label_cell_groups = T,
-                 show_trajectory_graph = FALSE)+
-    labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
-  #scale_color_viridis(option="E", discrete=F)
-  
-  ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name, ".pdf"),
-         width = 10, height = 10)
-  
-  p = plot_cells(cds_sub,
-                 genes = c(unique(UMAP_sub$gene_a), unique(UMAP_sub$gene_i)),
-                 label_cell_groups = T,
-                 show_trajectory_graph = FALSE)+
-    labs(x = "UMAP 1", y = "UMAP 2", title = "")
-  
-  ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
-         width = 10, height = 10)
-  
-  #pseudotime
-  cds_sub <- learn_graph(cds_sub)
-  
-  # Helper function to identify the root principal node with the lowest TTN expression
-  get_root_lowest_TTN <- function(cds, gene = g) {
-    # Extract expression matrix
-    exprs_mat <- exprs(cds)
-    
-    # Check that the gene exists
-    if (!(gene %in% rownames(exprs_mat))) {
-      stop(paste("Gene", gene, "not found in expression matrix."))
-    }
-    
-    # Get expression of TTN
-    ttn_expr <- exprs_mat[gene, ]
-    
-    # Identify the cell(s) with the lowest TTN expression (CHNAGED TO MAX FOR SOX2)
-    min_cells <- names(ttn_expr[ttn_expr == max(ttn_expr, na.rm = TRUE)])
-    
-    # Find the principal graph projection (which vertex each cell maps to)
-    closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
-    closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
-    
-    # Subset only the vertices for the cells with lowest TTN expression
-    vertices <- closest_vertex[min_cells, , drop = FALSE]
-    
-    # Find the most common vertex among these cells
-    root_pr_node <- names(which.max(table(vertices)))
-    root_pr_node = paste0("Y_", root_pr_node)
-    
-    return(root_pr_node)
-  }
-  
-  # Then use it when ordering cells:
-  cds_sub <- order_cells(cds_sub, root_pr_nodes = get_root_lowest_TTN(cds_sub))
-  pt = as.data.frame(pseudotime(cds_sub))
-  names(pt) = c("pseudotime")
-  write.csv(pt, paste0(dir, "/pseudotime_", group_name, ".csv"))
-  p_sub = plot_cells(cds_sub,
-                     color_cells_by = "pseudotime",
-                     label_cell_groups=FALSE,
-                     label_leaves=FALSE,
-                     label_branch_points=FALSE,
-                     graph_label_size=1.5)
-  ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_pseudotime.pdf"),
-         width = 5, height = 4)
-  
-  # ---- ENRICHMENT / DEPLETION (subclusters) ----
-  print("Running enrichment/depletion (subclusters)...")
-  df_sub <- as.data.frame(colData(cds_sub))
-  cellsxsubcluster <- df_sub %>%
-    distinct(clusters_sub, nomi) %>%
-    group_by(clusters_sub) %>%
-    mutate(cellsxsubcluster = n()) %>%
-    distinct(clusters_sub, cellsxsubcluster)
-  
-  # Gene A
-  gene_a_subcluster_counts <- df_sub %>%
-    group_by(sample, gene_a, clusters_sub) %>%
-    summarise(count = n(), .groups = "drop")
-  gene_a_subcluster_percentages <- gene_a_subcluster_counts %>%
-    group_by(sample, gene_a) %>%
-    mutate(total = sum(count),
-           percentage = (count / total) * 100) %>%
-    ungroup()
-  
-  p7 <- ggplot(gene_a_subcluster_percentages, 
-               aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-    # Add total cell counts above the bar
-    geom_text(aes(x = factor(sample), y = 100, label = total), 
-              inherit.aes = FALSE, size = 3, angle = 90) +
-    theme_minimal() +
-    theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-    facet_grid(~gene_a) +
-    labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-    scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_a_subcluster_percentages$clusters_sub))), amount = 0.4))
-  ggsave(p7, filename = paste0(dir, "/subclusters_within_gene_a_", group_name, ".pdf"), 
-         width = 10, height = 5)
-  
-  # ---- By guide_a ----
-  guide_a_subcluster_counts <- df_sub %>%
-    group_by(sample, guide_a, clusters_sub) %>%
-    summarise(count = n(), .groups = "drop")
-  
-  guide_a_subcluster_percentages <- guide_a_subcluster_counts %>%
-    group_by(sample, guide_a) %>%
-    mutate(total = sum(count),
-           percentage = (count / total) * 100) %>%
-    ungroup()
-  
-  p_guide_a <- ggplot(guide_a_subcluster_percentages, 
-                      aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-    # Add total cell counts above the bar
-    geom_text(aes(x = factor(sample), y = 100, label = total), 
-              inherit.aes = FALSE, size = 3, angle = 90) +
-    theme_minimal() +
-    theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-    facet_grid(~guide_a) +
-    labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-    scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_a_subcluster_percentages$clusters_sub))), amount = 0.4))
-  
-  ggsave(p_guide_a, filename = paste0(dir, "/subclusters_within_guide_a_", group_name, ".pdf"), 
-         width = 10, height = 5)
-  
-  # Gene I
-  gene_i_subcluster_counts <- df_sub %>%
-    group_by(sample, gene_i, clusters_sub) %>%
-    summarise(count = n(), .groups = "drop")
-  gene_i_subcluster_percentages <- gene_i_subcluster_counts %>%
-    group_by(sample, gene_i) %>%
-    mutate(total = sum(count),
-           percentage = (count / total) * 100) %>%
-    ungroup()
-  
-  p8 <- ggplot(gene_i_subcluster_percentages, 
-               aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-    # Add total cell counts above the bar
-    geom_text(aes(x = factor(sample), y = 100, label = total), 
-              inherit.aes = FALSE, size = 3, angle = 90) +
-    theme_minimal() +
-    facet_grid(~gene_i) +
-    theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-    labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-    scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_i_subcluster_percentages$clusters_sub))), amount = 0.4))
-  ggsave(p8, filename = paste0(dir, "/subclusters_within_gene_i_", group_name, ".pdf"), 
-         width = 10, height = 5)
-  
-  # ---- By guide_i ----
-  guide_i_subcluster_counts <- df_sub %>%
-    group_by(sample, guide_i, clusters_sub) %>%
-    summarise(count = n(), .groups = "drop")
-  
-  guide_i_subcluster_percentages <- guide_i_subcluster_counts %>%
-    group_by(sample, guide_i) %>%
-    mutate(total = sum(count),
-           percentage = (count / total) * 100) %>%
-    ungroup()
-  
-  p_guide_i <- ggplot(guide_i_subcluster_percentages, 
-                      aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-    # Add total cell counts above the bar
-    geom_text(aes(x = factor(sample), y = 100, label = total), 
-              inherit.aes = FALSE, size = 3, angle = 90) +
-    theme_minimal() +
-    theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-    facet_grid(~guide_i) +
-    labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-    scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_i_subcluster_percentages$clusters_sub))), amount = 0.4))
-  
-  ggsave(p_guide_i, filename = paste0(dir, "/subclusters_within_guide_i_", group_name, ".pdf"), 
-         width = 10, height = 5)
-  
-  #PLOT GENE EXPRESSION
-  #put gene names in $gene_short_name to solve bug
-  rowData(cds_sub)$gene_name <- rownames(cds_sub)
-  rowData(cds_sub)$gene_short_name <- rowData(cds_sub)$gene_name
-  
-  p = plot_cells(cds_sub,
-                 genes = glist,
-                 label_cell_groups = T,
-                 show_trajectory_graph = FALSE)+
-    labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
-  #scale_color_viridis(option="E", discrete=F)
-  
-  ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name, ".pdf"),
-         width = 10, height = 10)
-  
-  # ---- Return UMAP data for downstream use ----
-  return(UMAP_sub)
+  UMAP_sub = mutate(UMAP_sub, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+  UMAP_sub = mutate(UMAP_sub, guide_i = paste(guide_i1, guide_i2, sep = ";"))
 }
 
+
+UMAP_sub$sample <- as.factor(UMAP_sub$sample)
+
+# ---- Base UMAP plots ----
+p <- ggplot(UMAP_sub, aes(x, y, color = sample, alpha = 0.1)) +
+  geom_point(size = 0.4) +
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$sample)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_", group_name, ".pdf"),
+       width = 5, height = 4)
+
+# ---- By type ----
+p <- ggplot(UMAP_sub, aes(x, y, color = type, alpha = 0.1)) +
+  geom_point(size = 0.4)+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$type)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_type_", group_name, ".pdf"),
+       width = 5, height = 4)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = type, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$type)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_type_facet_", group_name, ".pdf"),
+       width = 18, height = 6)
+
+# ---- By guides ----
+p <- ggplot(UMAP_sub, aes(x, y, color = guide_a, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$guide_a)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_guide_a_", group_name, ".pdf"),
+       width = 18, height = 6)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = guide_i, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$guide_i)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_guide_i_", group_name, ".pdf"),
+       width = 9, height = 3)
+
+# ---- By genes ----
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_gene_a_", group_name, ".pdf"),
+       width = 9, height = 3)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type, gene_a))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_gene_a_facet_", group_name, ".pdf"),
+       width = 9, height = 9)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_gene_i_", group_name, ".pdf"),
+       width = 9, height = 3)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(type, gene_i))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_gene_i_facet_", group_name, ".pdf"),
+       width = 9, height = 9)
+
+# ---- By gene combinations ----
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_i, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(gene_a))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_i)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_facet_a_color_i_", group_name, ".pdf"),
+       width = 6, height = 5)
+
+p <- ggplot(UMAP_sub, aes(x, y, color = gene_a, alpha = 0.1)) +
+  geom_point(size = 0.4) + facet_wrap(vars(gene_i))+
+  scale_color_manual(values = viridis::turbo(length(unique(UMAP_sub$gene_a)))) + theme_minimal()
+ggsave(p, filename = paste0(dir, "/UMAP_facet_i_color_a_", group_name, ".pdf"),
+       width = 6, height = 5)
+
+# ---- Marker genes for subclusters ----
+message("Finding marker genes for subclusters...")
+marker_test_res <- top_markers(
+  cds_sub,
+  group_cells_by = "clusters_sub",
+  reference_cells = 1000,
+  cores = 8
+)
+
+top_specific_markers <- marker_test_res %>%
+  filter(fraction_expressing >= 0.10) %>%
+  group_by(cell_group) %>%
+  top_n(1, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+
+# Save data
+write.csv(marker_test_res,
+          paste0(dir, "/gene_markers_", group_name, ".csv"),
+          row.names = FALSE)
+write.csv(top_specific_markers,
+          paste0(dir, "/top1_gene_markers_", group_name, ".csv"),
+          row.names = FALSE)
+
+# Plot expression of top markers
+p <- plot_cells(
+  cds_sub,
+  genes = unique(top_specific_marker_ids),
+  label_cell_groups = TRUE,
+  show_trajectory_graph = FALSE
+) + labs(x = "UMAP 1", y = "UMAP 2", title = paste0("Top markers - ", group_name))
+
+ggsave(p, filename = paste0(dir, "/UMAP_top_markers_", group_name, ".pdf"),
+       width = 9, height = 9)
+
+#PLOT GENE EXPRESSION
+genes = "genes_of_interest.txt"
+glist = c(unique(t(read.delim(paste0(dir, "/", genes), sep = ",", header = F))))
+#put gene names in $gene_short_name to solve bug
+rowData(cds_sub)$gene_name <- rownames(cds_sub)
+rowData(cds_sub)$gene_short_name <- rowData(cds_sub)$gene_name
+
+p = plot_cells(cds_sub,
+               genes = glist,
+               label_cell_groups = T,
+               show_trajectory_graph = FALSE)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
+#scale_color_viridis(option="E", discrete=F)
+
+ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name, ".pdf"),
+       width = 10, height = 10)
+
+p = plot_cells(cds_sub,
+               genes = c(unique(UMAP_sub$gene_a), unique(UMAP_sub$gene_i)),
+               label_cell_groups = T,
+               show_trajectory_graph = FALSE)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "")
+
+ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
+       width = 10, height = 10)
+
+#pseudotime
+cds_sub <- learn_graph(cds_sub)
+# Save dataas an RData file
+save(cds_sub, file = paste0(dir, "/processed_cds_", group_name, ".RData"))
+
+# Helper function to identify the root principal node with the lowest TTN expression
+get_root_lowest_TTN <- function(cds, gene = g) {
+  # Extract expression matrix
+  exprs_mat <- exprs(cds)
+  
+  # Check that the gene exists
+  if (!(gene %in% rownames(exprs_mat))) {
+    stop(paste("Gene", gene, "not found in expression matrix."))
+  }
+  
+  # Get expression of TTN
+  ttn_expr <- exprs_mat[gene, ]
+  
+  # Identify the cell(s) with the lowest TTN expression (CHNAGED TO MAX FOR SOX2)
+  min_cells <- names(ttn_expr[ttn_expr == max(ttn_expr, na.rm = TRUE)])
+  
+  # Find the principal graph projection (which vertex each cell maps to)
+  closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  
+  # Subset only the vertices for the cells with lowest TTN expression
+  vertices <- closest_vertex[min_cells, , drop = FALSE]
+  
+  # Find the most common vertex among these cells
+  root_pr_node <- names(which.max(table(vertices)))
+  root_pr_node = paste0("Y_", root_pr_node)
+  
+  return(root_pr_node)
+}
+
+# Then use it when ordering cells:
+cds_sub <- order_cells(cds_sub, root_pr_nodes = get_root_lowest_TTN(cds_sub))
+pt = as.data.frame(pseudotime(cds_sub))
+names(pt) = c("pseudotime")
+write.csv(pt, paste0(dir, "/pseudotime_", group_name, ".csv"))
+p_sub = plot_cells(cds_sub,
+                   color_cells_by = "pseudotime",
+                   label_cell_groups=FALSE,
+                   label_leaves=FALSE,
+                   label_branch_points=FALSE,
+                   graph_label_size=1.5)
+ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_pseudotime.pdf"),
+       width = 5, height = 4)
+
+# ---- ENRICHMENT / DEPLETION (subclusters) ----
+print("Running enrichment/depletion (subclusters)...")
+df_sub <- as.data.frame(colData(cds_sub))
+cellsxsubcluster <- df_sub %>%
+  distinct(clusters_sub, nomi) %>%
+  group_by(clusters_sub) %>%
+  mutate(cellsxsubcluster = n()) %>%
+  distinct(clusters_sub, cellsxsubcluster)
+
+# Gene A
+gene_a_subcluster_counts <- df_sub %>%
+  group_by(sample, gene_a, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+gene_a_subcluster_percentages <- gene_a_subcluster_counts %>%
+  group_by(sample, gene_a) %>%
+  mutate(total = sum(count),
+         percentage = (count / total) * 100) %>%
+  ungroup()
+
+p7 <- ggplot(gene_a_subcluster_percentages, 
+             aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  # Add total cell counts above the bar
+  geom_text(aes(x = factor(sample), y = 100, label = total), 
+            inherit.aes = FALSE, size = 3, angle = 90) +
+  theme_minimal() +
+  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+  facet_grid(~gene_a) +
+  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+  scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_a_subcluster_percentages$clusters_sub))), amount = 0.4))
+ggsave(p7, filename = paste0(dir, "/subclusters_within_gene_a_", group_name, ".pdf"), 
+       width = 10, height = 5)
+
+# ---- By guide_a ----
+guide_a_subcluster_counts <- df_sub %>%
+  group_by(sample, guide_a, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+guide_a_subcluster_percentages <- guide_a_subcluster_counts %>%
+  group_by(sample, guide_a) %>%
+  mutate(total = sum(count),
+         percentage = (count / total) * 100) %>%
+  ungroup()
+
+p_guide_a <- ggplot(guide_a_subcluster_percentages, 
+                    aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  # Add total cell counts above the bar
+  geom_text(aes(x = factor(sample), y = 100, label = total), 
+            inherit.aes = FALSE, size = 3, angle = 90) +
+  theme_minimal() +
+  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+  facet_grid(~guide_a) +
+  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+  scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_a_subcluster_percentages$clusters_sub))), amount = 0.4))
+
+ggsave(p_guide_a, filename = paste0(dir, "/subclusters_within_guide_a_", group_name, ".pdf"), 
+       width = 10, height = 5)
+
+# Gene I
+gene_i_subcluster_counts <- df_sub %>%
+  group_by(sample, gene_i, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+gene_i_subcluster_percentages <- gene_i_subcluster_counts %>%
+  group_by(sample, gene_i) %>%
+  mutate(total = sum(count),
+         percentage = (count / total) * 100) %>%
+  ungroup()
+
+p8 <- ggplot(gene_i_subcluster_percentages, 
+             aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  # Add total cell counts above the bar
+  geom_text(aes(x = factor(sample), y = 100, label = total), 
+            inherit.aes = FALSE, size = 3, angle = 90) +
+  theme_minimal() +
+  facet_grid(~gene_i) +
+  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+  scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_i_subcluster_percentages$clusters_sub))), amount = 0.4))
+ggsave(p8, filename = paste0(dir, "/subclusters_within_gene_i_", group_name, ".pdf"), 
+       width = 10, height = 5)
+
+# ---- By guide_i ----
+guide_i_subcluster_counts <- df_sub %>%
+  group_by(sample, guide_i, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+guide_i_subcluster_percentages <- guide_i_subcluster_counts %>%
+  group_by(sample, guide_i) %>%
+  mutate(total = sum(count),
+         percentage = (count / total) * 100) %>%
+  ungroup()
+
+p_guide_i <- ggplot(guide_i_subcluster_percentages, 
+                    aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  # Add total cell counts above the bar
+  geom_text(aes(x = factor(sample), y = 100, label = total), 
+            inherit.aes = FALSE, size = 3, angle = 90) +
+  theme_minimal() +
+  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+  facet_grid(~guide_i) +
+  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+  scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_i_subcluster_percentages$clusters_sub))), amount = 0.4))
+
+ggsave(p_guide_i, filename = paste0(dir, "/subclusters_within_guide_i_", group_name, ".pdf"), 
+       width = 10, height = 5)
+
+
 # Usage
-UMAP_muscle <- analyze_clusters(cds, clusters_to_keep = ccs, group_name = group_of_interest, dir = dir, res = 0.05e-2)
+#UMAP_muscle <- analyze_clusters(cds, clusters_to_keep = ccs, group_name = group_of_interest, dir = dir, res = 0.05e-2)
 
 #UMAP_noRA <- analyze_clusters(cds, clusters_to_keep = c("5","2"), group_name = "noRA", dir = dir, res =  0.05e-2)
 

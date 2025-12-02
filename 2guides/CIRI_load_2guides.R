@@ -12,7 +12,7 @@ set.seed(1234597698)
 
 dir = "."
 file = "annotated_matrix.csv"
-res = 0.001e-4
+res = 0.1e-4
 
 
 #LOAD ANNOTATED GENE EXP

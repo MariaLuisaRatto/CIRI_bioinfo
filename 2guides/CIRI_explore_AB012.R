@@ -58,20 +58,20 @@ barcodes <- CIRI[["matrix/barcodes"]][]
 rownames(mat) <- names
 colnames(mat) <- barcodes
 
-### FILTER OUT DOUBLETS
-# --- Load singlet barcodes ---
-sing1 <- readLines("CIRI12_1_singlets_cells.txt")
-sing2 <- readLines("CIRI12_2_singlets_cells.txt")
-sing2 = sub(1, replacement = 2, x = sing2)
-# Combine
-singlets <- unique(c(sing1, sing2))
-
-# --- Filter matrix ---
-keep_cols <- colnames(mat) %in% singlets
-mat <- mat[, keep_cols, drop = FALSE]
-
-cat("Cells before filtering:", length(barcodes), "\n")
-cat("Cells after filtering:", ncol(mat), "\n")
+# ### FILTER OUT DOUBLETS
+# # --- Load singlet barcodes ---
+# sing1 <- readLines("CIRI12_1_singlets_cells.txt")
+# sing2 <- readLines("CIRI12_2_singlets_cells.txt")
+# sing2 = sub(1, replacement = 2, x = sing2)
+# # Combine
+# singlets <- unique(c(sing1, sing2))
+# 
+# # --- Filter matrix ---
+# keep_cols <- colnames(mat) %in% singlets
+# mat <- mat[, keep_cols, drop = FALSE]
+# 
+# cat("Cells before filtering:", length(barcodes), "\n")
+# cat("Cells after filtering:", ncol(mat), "\n")
 
 # Subset only CRISPR guides
 crispr_mat <- mat[crispr_idx, , drop = FALSE]
@@ -502,13 +502,9 @@ all_wide <- all %>%
     names_from = feature,
     values_from = c(umi, percentage),
     names_sep = "_"
-  ) %>%
-  rename(
-    umi_a = umi_CRISPRa,
-    umi_i = umi_CRISPRi,
-    percentage_a = percentage_CRISPRa,
-    percentage_i = percentage_CRISPRi
-  )
+  ) #%>%
+
+all_wide = as.data.frame(all_wide)
 
 all_wide <- all_wide %>%
   filter(CRISPRa | CRISPRi)

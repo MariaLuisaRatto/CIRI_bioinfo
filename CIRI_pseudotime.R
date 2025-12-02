@@ -4,12 +4,13 @@ args = commandArgs(trailingOnly=TRUE)
 dir = "."
 #dir = as.character(args[1])
 print(paste("Folder:", dir))
-file = "processed_cds.RData"
+file = "processed_cds_muscle.RData"
 #file = args[2]
 print(paste("File:", file))
-pseudotime = "pseudotime_Group_3.csv"
+pseudotime = "signature_values_csv/sarcomere_core.csv"
 #pseudotime = args[3]
 print(paste("Pseudotime file:", pseudotime))
+analysis = "sarcomere"
 
 all = T
 #all = as.logical(args[4])
@@ -72,7 +73,7 @@ if (length(unique(pt$gene_a)) < 21) {
     stat_ecdf(geom = "step") +
     theme_classic(base_size = 14) +
     ylab("Cumulative frequency") +
-    xlab("monocle pseudotime") +
+    xlab(analysis) +
     ggtitle(paste("Cumulative frequency on", analysis))+
     scale_color_manual(values = viridis::turbo(length(unique(pt$gene_a))))+
     facet_grid(vars(type))
@@ -88,7 +89,7 @@ if (length(unique(pt$gene_i)) < 21) {
     stat_ecdf(geom = "step") +
     theme_classic(base_size = 14) +
     ylab("Cumulative frequency") +
-    xlab("monocle pseudotime") +
+    xlab(analysis) +
     ggtitle(paste("Cumulative frequency on", analysis))+
     scale_color_manual(values = viridis::turbo(length(unique(pt$gene_i))))+
     facet_grid(vars(type))
@@ -104,7 +105,7 @@ if (length(unique(pt$guide_a)) < 21) {
     stat_ecdf(geom = "step") +
     theme_classic(base_size = 14) +
     ylab("Cumulative frequency") +
-    xlab("monocle pseudotime") +
+    xlab(analysis) +
     ggtitle(paste("Cumulative frequency on", analysis)) +
     scale_color_manual(values = viridis::turbo(length(unique(pt$guide_a))))+
     facet_grid(vars(type))
@@ -120,7 +121,7 @@ if (length(unique(pt$guide_i)) < 21) {
     stat_ecdf(geom = "step") +
     theme_classic(base_size = 14) +
     ylab("Cumulative frequency") +
-    xlab("monocle pseudotime") +
+    xlab(analysis) +
     ggtitle(paste("Cumulative frequency on", analysis)) +
     scale_color_manual(values = viridis::turbo(length(unique(pt$guide_i))))+
     facet_grid(vars(type))
@@ -256,14 +257,14 @@ run_ks_test <- function(data, type, target, control_genes, dir, all, t_label) {
     distinct()
   
   # Output files
-  out_csv <- file.path(dir, paste0(t_label, "_", target, "_ks_statistics_all", all, ".csv"))
-  out_pdf <- file.path(dir, paste0(t_label, "_volcano_ks_stats_", target, "_all", all, ".pdf"))
+  out_csv <- file.path(dir, paste0(t_label, "_", target, "_ks_statistics_all", all, analysis, ".csv"))
+  out_pdf <- file.path(dir, paste0(t_label, "_volcano_ks_stats_", target, "_all", all, analysis, ".pdf"))
   
   write.csv(ks_stat, out_csv, row.names = FALSE)
   message("Wrote: ", out_csv)
   
   # Volcano plot
-  plot_title <- paste("KS test statistics for", target, "- type:", t_label)
+  plot_title <- paste("KS test statistics for", target, "- type:", t_label, "_", analysis)
   
   p <- ggplot(ks_stat_fil, aes(x = statistic, y = -log10(padj))) +
     geom_point(aes(colour = analysis), size = 2, alpha = 0.3) +

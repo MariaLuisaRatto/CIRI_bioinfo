@@ -12,7 +12,7 @@ suppressMessages(library(colorspace))
 set.seed(1234597698)
 
 dir = "."
-ccs = c("5")
+ccs = c("4")
 group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
 g = "SOX2"
 
@@ -29,7 +29,6 @@ cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>%
   mutate(cellsxcluster = n()) 
 
 cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
-print(cellsxcluster)
 print(paste0("Min cells per clusters: ", min_cells_cluster))
 print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
 cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
@@ -204,7 +203,7 @@ gene_comb_cluster_percentages <- gene_comb_cluster_counts %>%
 # ---- Order gene_comb within each sample by Group_4_10 percentage ----
 order_df <- gene_comb_cluster_percentages %>%
   filter(cluster_group == group_of_interest) %>%
-  select(sample, gene_comb, percentage)
+  dplyr::select(sample, gene_comb, percentage)
 
 gene_comb_cluster_percentages <- gene_comb_cluster_percentages %>%
   left_join(order_df, by = c("sample", "gene_comb"), suffix = c("", "_grp4")) %>%
@@ -303,7 +302,7 @@ for (s in unique(gene_to_keep$sample)) {
   # Get Group_4_10 percentage per gene_comb (0 if missing)
   order_df <- plot_data %>%
     filter(cluster_group == group_of_interest) %>%
-    select(gene_comb, percentage)
+    dplyr::select(gene_comb, percentage)
   
   # Make a complete ordering vector
   all_gene_combs <- unique(plot_data$gene_comb)
@@ -429,7 +428,7 @@ comb_pass <- totals_filtered_min %>%
 # ---- Step 2: Compute percentages for Group_4_10 per comb per sample ----
 percentages_group <- comb_cluster_percentages %>%
   filter(comb %in% comb_pass, cluster_group == group_of_interest) %>%
-  select(sample, comb, percentage)
+  dplyr::select(sample, comb, percentage)
 
 # ---- Step 3: Pivot to wide format (sample 1 vs sample 2) ----
 percentages_wide <- percentages_group %>%
