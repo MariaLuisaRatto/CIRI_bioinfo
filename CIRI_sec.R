@@ -14,7 +14,8 @@ set.seed(1234597698)
 dir = "."
 ccs = c("4")
 group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
-g = "SOX2"
+control_name <- "NTCa_1A;NTCa_1B-NA;NA"
+#control_name <- "NTCa-NA"
 
 load(paste0(dir, "/processed_cds.Rdata"))
 
@@ -355,16 +356,133 @@ comb_cluster_percentages <- comb_cluster_counts %>%
   mutate(total = sum(count),
          percentage = (count / total) * 100) %>%
   ungroup()
+
+
 # ---- Identify comb with at least 10 cells per sample ----
 totals <- comb_cluster_percentages %>%
   group_by(sample, comb) %>%
   summarise(total_cells = sum(count), .groups = "drop")
 
+# ---------------------------------------------------------
+# POWER ANALYSIS CONFIGURATION
+# # ---------------------------------------------------------
+# # PRECISION ANALYSIS: Determining Min Cells Threshold
+# # ---------------------------------------------------------
+# 
+# # Define a range of cell counts to test (from 5 to 200)
+# n_range <- seq(5, 200, by = 5)
+# 
+# # Calculate Margin of Error (95% CI) for a proportion of 0.5 (Maximum Uncertainty)
+# # Formula: 1.96 * sqrt( (0.5 * 0.5) / n )
+# margin_of_error <- 1.96 * sqrt((0.5 * 0.5) / n_range) * 100
+# 
+# decision_df <- data.frame(n = n_range, error = margin_of_error)
+# 
+# # Plot
+# p_decision <- ggplot(decision_df, aes(x = n, y = error)) +
+#   geom_line(color = "black", linewidth = 1) +
+#   geom_point(color = "red") +
+#   # Mark your current threshold
+#   geom_vline(xintercept = 10, linetype = "dashed", color = "blue") +
+#   annotate("text", x = 12, y = 40, label = "Current (10)\nError: ±31%", color = "blue", hjust = 0) +
+#   # Mark a recommended threshold (e.g., 40)
+#   geom_vline(xintercept = 40, linetype = "dashed", color = "darkgreen") +
+#   annotate("text", x = 42, y = 15, label = "Recommended (40)\nError: ±15%", color = "darkgreen", hjust = 0) +
+#   theme_minimal() +
+#   scale_y_continuous(breaks = seq(0, 50, 5)) +
+#   scale_x_continuous(breaks = seq(0, 200, 20)) +
+#   labs(
+#     title = "Precision Analysis: How 'Noisy' is a bar plot at N cells?",
+#     subtitle = "Margin of Error (95% Confidence) assuming 50% distribution",
+#     x = "Number of Cells (N)",
+#     y = "Margin of Error (+/- %)"
+#   )
+# 
+# ggsave(p_decision, filename = paste0(dir, "/precision_threshold_decision.pdf"), width = 8, height = 6)
+
+# ---------------------------------------------------------
+# STATISTICAL ANALYSIS: Fisher's Exact Test
+# ---------------------------------------------------------
+# 1. Prepare Count Data (Wide format: Target vs Other)
+fisher_input <- df %>%
+  group_by(sample, comb) %>%
+  summarise(
+    n_target = sum(cluster_group == group_of_interest),
+    n_total = n(),
+    n_other = n_total - n_target,
+    pct_target = (n_target / n_total) * 100,
+    .groups = "drop"
+  )
+
+# 2. Run Fisher's Test Loop
+results_list <- list()
+
+for (s in unique(fisher_input$sample)) {
+  
+  # Get data for this sample
+  sample_data <- fisher_input %>% filter(sample == s)
+  
+  # Get Control stats for this sample
+  ctrl_row <- sample_data %>% filter(comb == control_name)
+  
+  if (nrow(ctrl_row) == 1) {
+    ctrl_target <- ctrl_row$n_target
+    ctrl_other <- ctrl_row$n_other
+    
+    # Calculate stats for every guide in this sample
+    sample_res <- sample_data %>%
+      rowwise() %>%
+      mutate(
+        # Perform Fisher Test
+        p_val = ifelse(comb == control_name, NA, 
+                       fisher.test(matrix(c(n_target, n_other, 
+                                            ctrl_target, ctrl_other), 
+                                          nrow = 2))$p.value),
+        # Calculate Odds Ratio (Effect Size)
+        odds_ratio = ifelse(comb == control_name, NA,
+                            fisher.test(matrix(c(n_target, n_other, 
+                                                 ctrl_target, ctrl_other), 
+                                               nrow = 2))$estimate)
+      ) %>%
+      ungroup()
+    
+    # Multiple Testing Correction (FDR) within this sample
+    # We only correct for the non-control comparisons
+    p_values <- sample_res$p_val[!is.na(sample_res$p_val)]
+    sample_res <- sample_res %>%
+      mutate(p_adj = ifelse(is.na(p_val), NA, p.adjust(p_val, method = "fdr")),
+             significance = case_when(
+               p_adj < 0.001 ~ "***",
+               p_adj < 0.01 ~ "**",
+               p_adj < 0.05 ~ "*",
+               !is.na(p_adj) ~ "ns",
+               TRUE ~ "Control"
+             ))
+    
+    results_list[[s]] <- sample_res
+    
+  } else {
+    warning(paste("Control", control_name, "not found in sample", s))
+  }
+}
+
+# 3. Combine and Save
+final_stats <- bind_rows(results_list)
+
+# Reorder columns for readability
+final_stats <- final_stats %>%
+  select(sample, comb, n_total, n_target, pct_target, odds_ratio, p_val, p_adj, significance) %>%
+  arrange(sample, p_adj)
+
+# Save to CSV
+write.csv(final_stats, paste0(dir, "/fisher_stats_results.csv"), row.names = FALSE)
+######
+
+#filter 20 
 comb_to_keep <- totals %>%
   group_by(sample, comb) %>%
   summarise(comb_total = sum(total_cells), .groups = "drop") %>%
-  filter(comb_total >= 10)
-
+  filter(comb_total >= 20)
 # ---- Loop over samples ----
 for (s in unique(comb_to_keep$sample)) {
   
@@ -409,7 +527,60 @@ for (s in unique(comb_to_keep$sample)) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5))+
     scale_fill_manual(values = lighten(viridis::turbo(2), amount = 0.4)) 
   
-  ggsave(p, filename = paste0(dir, "/cluster_groups_comb_", s, "_ordered.pdf"), 
+  ggsave(p, filename = paste0(dir, "/cluster_groups_comb_", s, "_ordered_filter_20.pdf"), 
+         width = 12, height = 6)
+}
+###filter 10
+
+comb_to_keep <- totals %>%
+  group_by(sample, comb) %>%
+  summarise(comb_total = sum(total_cells), .groups = "drop") %>%
+  filter(comb_total >= 10)
+# ---- Loop over samples ----
+for (s in unique(comb_to_keep$sample)) {
+  
+  # Keep only data for this sample + valid comb
+  comb_keep_sample <- comb_to_keep %>% filter(sample == s) %>% pull(comb)
+  
+  plot_data <- comb_cluster_percentages %>%
+    filter(sample == s, comb %in% comb_keep_sample)
+  
+  totals_filtered <- totals %>%
+    filter(sample == s, comb %in% comb_keep_sample)
+  
+  # ---- Order comb by percentage in Group_4_10 ----
+  order_df <- plot_data %>%
+    filter(cluster_group == group_of_interest) %>%
+    arrange(desc(percentage))
+  
+  all_combs <- unique(plot_data$comb)
+  missing_combs <- setdiff(all_combs, order_df$comb)
+  
+  if (length(missing_combs) > 0) {
+    order_df <- bind_rows(order_df, 
+                          data.frame(comb = missing_combs, percentage = 0))
+  }
+  
+  plot_data$comb <- factor(plot_data$comb, 
+                           levels = order_df %>% arrange(desc(percentage)) %>% pull(comb))
+  totals_filtered$comb <- factor(totals_filtered$comb, levels = levels(plot_data$comb))
+  
+  # ---- Plot ----
+  p <- ggplot(plot_data, 
+              aes(x = comb, y = percentage, fill = cluster_group)) +
+    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+    geom_text(data = totals_filtered, 
+              aes(x = comb, y = 100, label = total_cells), 
+              inherit.aes = FALSE, size = 3, angle = 90) +
+    theme_minimal() +
+    labs(x = "Combination", 
+         y = "Percentage of cells", 
+         fill = "Cluster group",
+         title = paste("Sample:", s)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5))+
+    scale_fill_manual(values = lighten(viridis::turbo(2), amount = 0.4)) 
+  
+  ggsave(p, filename = paste0(dir, "/cluster_groups_comb_", s, "_ordered_filter_10.pdf"), 
          width = 12, height = 6)
 }
 

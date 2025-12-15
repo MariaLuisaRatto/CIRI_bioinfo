@@ -11,7 +11,7 @@ suppressMessages(library(ggrepel))
 suppressMessages(library(colorspace))
 set.seed(1234597698)
 
-dir = "."
+dir = "/Users/marialuisaratto/scripts/CIRI12_starting_dataset/"
 ccs = c("4")
 group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
 g = "SOX2"
@@ -19,8 +19,8 @@ g = "SOX2"
 load(paste0(dir, "/processed_cds.Rdata"))
 clusters_to_keep = ccs
 group_name = "muscle"
-#res = 0.1e-2
-res = 1e-4
+res = 0.1e-2
+#res = 1e-4
   
 # ---- Subset CDS ----
 cds_sub <- cds[, colData(cds)$clusters %in% clusters_to_keep]
@@ -56,7 +56,8 @@ p_sub <- plot_cells(
   label_cell_groups = TRUE,
   label_leaves = FALSE,
   label_branch_points = FALSE
-)
+) +
+  labs(caption = paste("res =", res))
 ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_subclusters.pdf"),
        width = 5, height = 4)
 
@@ -228,163 +229,407 @@ p = plot_cells(cds_sub,
 ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
        width = 10, height = 10)
 
-#pseudotime
+## ---- PSEUDOTIME ----
 cds_sub <- learn_graph(cds_sub)
+
+# Helper function to identify the root principal node with the lowest TTN expression
+get_root_lowest_TTN <- function(cds, gene) {
+    
+    # sanity check
+    if (!gene %in% rownames(cds)) {
+      stop(paste("Gene", gene, "not found in CDS"))
+    }
+    
+    gene_expr <- as.numeric(exprs(cds)[gene, ])
+    names(gene_expr) <- colnames(cds)  # ensure names exist
+    
+    if (all(is.na(gene_expr))) stop("Gene expression is all NA")
+    
+    max_val <- max(gene_expr, na.rm = TRUE)
+    min_cells <- names(gene_expr[gene_expr == max_val])
+    
+    if (length(min_cells) == 0) stop("No cells found with max expression")
+    
+    # Find the principal graph projection (which vertex each cell maps to)
+    closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+    vertices <- closest_vertex[min_cells, , drop = FALSE]
+    
+    # Find the most common vertex among these cells
+    root_pr_node <- names(which.max(table(vertices)))
+    root_pr_node = paste0("Y_", root_pr_node)
+    print(root_pr_node)
+    return(root_pr_node)
+}
+
+cds_sub <- order_cells(
+  cds_sub,
+  root_pr_nodes = get_root_lowest_TTN(cds_sub, gene = g)
+)
 # Save dataas an RData file
 save(cds_sub, file = paste0(dir, "/processed_cds_", group_name, ".RData"))
 
-# Helper function to identify the root principal node with the lowest TTN expression
-get_root_lowest_TTN <- function(cds, gene = g) {
-  # Extract expression matrix
-  exprs_mat <- exprs(cds)
+#pseudotime for each sample 
+samples <- unique(colData(cds_sub)$sample)
+for (s in samples) {
   
-  # Check that the gene exists
-  if (!(gene %in% rownames(exprs_mat))) {
-    stop(paste("Gene", gene, "not found in expression matrix."))
-  }
+  message(paste("Processing sample:", s))
   
-  # Get expression of TTN
-  ttn_expr <- exprs_mat[gene, ]
+  ## ---- subset CDS ----
+  cds_sample <- cds_sub[, colData(cds_sub)$sample %in% s]
+  group_name_s <- paste0(group_name, "_", s)
   
-  # Identify the cell(s) with the lowest TTN expression (CHNAGED TO MAX FOR SOX2)
-  min_cells <- names(ttn_expr[ttn_expr == max(ttn_expr, na.rm = TRUE)])
+  save(cds_sample, file = paste0(dir, "/cds_sample_", s, "_ordered.RData"))
   
-  # Find the principal graph projection (which vertex each cell maps to)
-  closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
-  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  pt <- as.data.frame(pseudotime(cds_sample))
+  colnames(pt) <- "pseudotime"
+  write.csv(
+    pt,
+    file = paste0(dir, "/pseudotime_", group_name_s, ".csv")
+  )
   
-  # Subset only the vertices for the cells with lowest TTN expression
-  vertices <- closest_vertex[min_cells, , drop = FALSE]
+  p_sub <- plot_cells(
+    cds_sample,
+    color_cells_by = "pseudotime",
+    label_cell_groups = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE,
+    graph_label_size = 1.5
+  ) +
+    ggtitle(paste("Pseudotime - sample", s))
   
-  # Find the most common vertex among these cells
-  root_pr_node <- names(which.max(table(vertices)))
-  root_pr_node = paste0("Y_", root_pr_node)
+  ggsave(
+    p_sub,
+    filename = paste0(dir, "/UMAP_", group_name_s, "_pseudotime.pdf"),
+    width = 5,
+    height = 4
+  )
   
-  return(root_pr_node)
+  ## ---- ENRICHMENT / DEPLETION ----
+  df_sub <- as.data.frame(colData(cds_sample))
+  
+  ## ---- Gene A ----
+  gene_a_counts <- df_sub %>%
+    group_by(gene_a, clusters_sub) %>%
+    summarise(count = n(), .groups = "drop")
+  
+  gene_a_percentages <- gene_a_counts %>%
+    group_by(gene_a) %>%
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100
+    ) %>%
+    ungroup()
+  
+  p_gene_a <- ggplot(
+    gene_a_percentages,
+    aes(x = gene_a, y = percentage, fill = clusters_sub)
+  ) +
+    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+    geom_text(
+      aes(y = 100, label = total),
+      #inherit.aes = FALSE,
+      size = 3,
+      angle = 90
+    ) +
+    #facet_grid(~gene_a) +
+    labs(
+      title = paste("Subclusters within gene_a - sample", s),
+      x = "gene_a",
+      y = "Percentage of cells",
+      fill = "Subcluster"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    ) +
+    scale_fill_manual(
+      values = lighten(
+        viridis::turbo(length(unique(gene_a_percentages$clusters_sub))),
+        amount = 0.4
+      )
+    )
+  
+  ggsave(
+    p_gene_a,
+    filename = paste0(dir, "/subclusters_gene_a_", group_name_s, ".pdf"),
+    width = 10,
+    height = 5
+  )
+  
+  ## ---- guide_a ----
+  guide_a_counts <- df_sub %>%
+    group_by(guide_a, clusters_sub) %>%
+    summarise(count = n(), .groups = "drop")
+  
+  guide_a_percentages <- guide_a_counts %>%
+    group_by(guide_a) %>%
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100
+    ) %>%
+    ungroup()
+  
+  p_guide_a <- ggplot(
+    guide_a_percentages,
+    aes(x = guide_a, y = percentage, fill = clusters_sub)
+  ) +
+    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+    geom_text(
+      aes(y = 100, label = total),
+      #inherit.aes = FALSE,
+      size = 3,
+      angle = 90
+    ) +
+    #facet_grid(~guide_a) +
+    labs(
+      title = paste("Subclusters within guide_a - sample", s),
+      x = "guide_a",
+      y = "Percentage of cells",
+      fill = "Subcluster"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    ) +
+    scale_fill_manual(
+      values = lighten(
+        viridis::turbo(length(unique(guide_a_percentages$clusters_sub))),
+        amount = 0.4
+      )
+    )
+  
+  ggsave(
+    p_guide_a,
+    filename = paste0(dir, "/subclusters_guide_a_", group_name_s, ".pdf"),
+    width = 10,
+    height = 5
+  )
+  
+  ## ---- Gene I ----
+  gene_i_counts <- df_sub %>%
+    group_by(gene_i, clusters_sub) %>%
+    summarise(count = n(), .groups = "drop")
+  
+  gene_i_percentages <- gene_i_counts %>%
+    group_by(gene_i) %>%
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100
+    ) %>%
+    ungroup()
+  
+  p_gene_i <- ggplot(
+    gene_i_percentages,
+    aes(x = gene_i, y = percentage, fill = clusters_sub)
+  ) +
+    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+    geom_text(
+      aes(y = 100, label = total),
+      #inherit.aes = FALSE,
+      size = 3,
+      angle = 90
+    ) +
+    #facet_grid(~gene_i) +
+    labs(
+      title = paste("Subclusters within gene_i - sample", s),
+      x = "gene_i",
+      y = "Percentage of cells",
+      fill = "Subcluster"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    ) +
+    scale_fill_manual(
+      values = lighten(
+        viridis::turbo(length(unique(gene_i_percentages$clusters_sub))),
+        amount = 0.4
+      )
+    )
+  
+  ggsave(
+    p_gene_i,
+    filename = paste0(dir, "/subclusters_gene_i_", group_name_s, ".pdf"),
+    width = 10,
+    height = 5
+  )
+  
+  ## ---- guide_i ----
+  guide_i_counts <- df_sub %>%
+    group_by(guide_i, clusters_sub) %>%
+    summarise(count = n(), .groups = "drop")
+  
+  guide_i_percentages <- guide_i_counts %>%
+    group_by(guide_i) %>%
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100
+    ) %>%
+    ungroup()
+  
+  p_guide_i <- ggplot(
+    guide_i_percentages,
+    aes(x = guide_i, y = percentage, fill = clusters_sub)
+  ) +
+    geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+    geom_text(
+      aes(y = 100, label = total),
+      #inherit.aes = FALSE,
+      size = 3,
+      angle = 90
+    ) +
+    #facet_grid(~guide_i) +
+    labs(
+      title = paste("Subclusters within guide_i - sample", s),
+      x = "guide_i",
+      y = "Percentage of cells",
+      fill = "Subcluster"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    ) +
+    scale_fill_manual(
+      values = lighten(
+        viridis::turbo(length(unique(guide_i_percentages$clusters_sub))),
+        amount = 0.4
+      )
+    )
+  
+  ggsave(
+    p_guide_i,
+    filename = paste0(dir, "/subclusters_guide_i_", group_name_s, ".pdf"),
+    width = 10,
+    height = 5
+  )
 }
 
-# Then use it when ordering cells:
-cds_sub <- order_cells(cds_sub, root_pr_nodes = get_root_lowest_TTN(cds_sub))
-pt = as.data.frame(pseudotime(cds_sub))
-names(pt) = c("pseudotime")
-write.csv(pt, paste0(dir, "/pseudotime_", group_name, ".csv"))
-p_sub = plot_cells(cds_sub,
-                   color_cells_by = "pseudotime",
-                   label_cell_groups=FALSE,
-                   label_leaves=FALSE,
-                   label_branch_points=FALSE,
-                   graph_label_size=1.5)
-ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_pseudotime.pdf"),
-       width = 5, height = 4)
 
-# ---- ENRICHMENT / DEPLETION (subclusters) ----
-print("Running enrichment/depletion (subclusters)...")
-df_sub <- as.data.frame(colData(cds_sub))
-cellsxsubcluster <- df_sub %>%
-  distinct(clusters_sub, nomi) %>%
-  group_by(clusters_sub) %>%
-  mutate(cellsxsubcluster = n()) %>%
-  distinct(clusters_sub, cellsxsubcluster)
-
-# Gene A
-gene_a_subcluster_counts <- df_sub %>%
-  group_by(sample, gene_a, clusters_sub) %>%
-  summarise(count = n(), .groups = "drop")
-gene_a_subcluster_percentages <- gene_a_subcluster_counts %>%
-  group_by(sample, gene_a) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p7 <- ggplot(gene_a_subcluster_percentages, 
-             aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  # Add total cell counts above the bar
-  geom_text(aes(x = factor(sample), y = 100, label = total), 
-            inherit.aes = FALSE, size = 3, angle = 90) +
-  theme_minimal() +
-  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-  facet_grid(~gene_a) +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-  scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_a_subcluster_percentages$clusters_sub))), amount = 0.4))
-ggsave(p7, filename = paste0(dir, "/subclusters_within_gene_a_", group_name, ".pdf"), 
-       width = 10, height = 5)
-
-# ---- By guide_a ----
-guide_a_subcluster_counts <- df_sub %>%
-  group_by(sample, guide_a, clusters_sub) %>%
-  summarise(count = n(), .groups = "drop")
-
-guide_a_subcluster_percentages <- guide_a_subcluster_counts %>%
-  group_by(sample, guide_a) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p_guide_a <- ggplot(guide_a_subcluster_percentages, 
-                    aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  # Add total cell counts above the bar
-  geom_text(aes(x = factor(sample), y = 100, label = total), 
-            inherit.aes = FALSE, size = 3, angle = 90) +
-  theme_minimal() +
-  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-  facet_grid(~guide_a) +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-  scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_a_subcluster_percentages$clusters_sub))), amount = 0.4))
-
-ggsave(p_guide_a, filename = paste0(dir, "/subclusters_within_guide_a_", group_name, ".pdf"), 
-       width = 10, height = 5)
-
-# Gene I
-gene_i_subcluster_counts <- df_sub %>%
-  group_by(sample, gene_i, clusters_sub) %>%
-  summarise(count = n(), .groups = "drop")
-gene_i_subcluster_percentages <- gene_i_subcluster_counts %>%
-  group_by(sample, gene_i) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p8 <- ggplot(gene_i_subcluster_percentages, 
-             aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  # Add total cell counts above the bar
-  geom_text(aes(x = factor(sample), y = 100, label = total), 
-            inherit.aes = FALSE, size = 3, angle = 90) +
-  theme_minimal() +
-  facet_grid(~gene_i) +
-  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-  scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_i_subcluster_percentages$clusters_sub))), amount = 0.4))
-ggsave(p8, filename = paste0(dir, "/subclusters_within_gene_i_", group_name, ".pdf"), 
-       width = 10, height = 5)
-
-# ---- By guide_i ----
-guide_i_subcluster_counts <- df_sub %>%
-  group_by(sample, guide_i, clusters_sub) %>%
-  summarise(count = n(), .groups = "drop")
-
-guide_i_subcluster_percentages <- guide_i_subcluster_counts %>%
-  group_by(sample, guide_i) %>%
-  mutate(total = sum(count),
-         percentage = (count / total) * 100) %>%
-  ungroup()
-
-p_guide_i <- ggplot(guide_i_subcluster_percentages, 
-                    aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
-  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
-  # Add total cell counts above the bar
-  geom_text(aes(x = factor(sample), y = 100, label = total), 
-            inherit.aes = FALSE, size = 3, angle = 90) +
-  theme_minimal() +
-  theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
-  facet_grid(~guide_i) +
-  labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
-  scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_i_subcluster_percentages$clusters_sub))), amount = 0.4))
-
-ggsave(p_guide_i, filename = paste0(dir, "/subclusters_within_guide_i_", group_name, ".pdf"), 
-       width = 10, height = 5)
+# 
+# # Then use it when ordering cells:
+# cds_sub <- order_cells(cds_sub, root_pr_nodes = get_root_lowest_TTN(cds_sub))
+# pt = as.data.frame(pseudotime(cds_sub))
+# names(pt) = c("pseudotime")
+# write.csv(pt, paste0(dir, "/pseudotime_", group_name, ".csv"))
+# p_sub = plot_cells(cds_sub,
+#                    color_cells_by = "pseudotime",
+#                    label_cell_groups=FALSE,
+#                    label_leaves=FALSE,
+#                    label_branch_points=FALSE,
+#                    graph_label_size=1.5)
+# ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_pseudotime.pdf"),
+#        width = 5, height = 4)
+# 
+# # ---- ENRICHMENT / DEPLETION (subclusters) ----
+# print("Running enrichment/depletion (subclusters)...")
+# df_sub <- as.data.frame(colData(cds_sub))
+# cellsxsubcluster <- df_sub %>%
+#   distinct(clusters_sub, nomi) %>%
+#   group_by(clusters_sub) %>%
+#   mutate(cellsxsubcluster = n()) %>%
+#   distinct(clusters_sub, cellsxsubcluster)
+# 
+# # Gene A
+# gene_a_subcluster_counts <- df_sub %>%
+#   group_by(sample, gene_a, clusters_sub) %>%
+#   summarise(count = n(), .groups = "drop")
+# gene_a_subcluster_percentages <- gene_a_subcluster_counts %>%
+#   group_by(sample, gene_a) %>%
+#   mutate(total = sum(count),
+#          percentage = (count / total) * 100) %>%
+#   ungroup()
+# 
+# p7 <- ggplot(gene_a_subcluster_percentages, 
+#              aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+#   geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+#   # Add total cell counts above the bar
+#   geom_text(aes(x = factor(sample), y = 100, label = total), 
+#             inherit.aes = FALSE, size = 3, angle = 90) +
+#   theme_minimal() +
+#   theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+#   facet_grid(~gene_a) +
+#   labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+#   scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_a_subcluster_percentages$clusters_sub))), amount = 0.4))
+# ggsave(p7, filename = paste0(dir, "/subclusters_within_gene_a_", group_name, ".pdf"), 
+#        width = 10, height = 5)
+# 
+# # ---- By guide_a ----
+# guide_a_subcluster_counts <- df_sub %>%
+#   group_by(sample, guide_a, clusters_sub) %>%
+#   summarise(count = n(), .groups = "drop")
+# 
+# guide_a_subcluster_percentages <- guide_a_subcluster_counts %>%
+#   group_by(sample, guide_a) %>%
+#   mutate(total = sum(count),
+#          percentage = (count / total) * 100) %>%
+#   ungroup()
+# 
+# p_guide_a <- ggplot(guide_a_subcluster_percentages, 
+#                     aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+#   geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+#   # Add total cell counts above the bar
+#   geom_text(aes(x = factor(sample), y = 100, label = total), 
+#             inherit.aes = FALSE, size = 3, angle = 90) +
+#   theme_minimal() +
+#   theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+#   facet_grid(~guide_a) +
+#   labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+#   scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_a_subcluster_percentages$clusters_sub))), amount = 0.4))
+# 
+# ggsave(p_guide_a, filename = paste0(dir, "/subclusters_within_guide_a_", group_name, ".pdf"), 
+#        width = 10, height = 5)
+# 
+# # Gene I
+# gene_i_subcluster_counts <- df_sub %>%
+#   group_by(sample, gene_i, clusters_sub) %>%
+#   summarise(count = n(), .groups = "drop")
+# gene_i_subcluster_percentages <- gene_i_subcluster_counts %>%
+#   group_by(sample, gene_i) %>%
+#   mutate(total = sum(count),
+#          percentage = (count / total) * 100) %>%
+#   ungroup()
+# 
+# p8 <- ggplot(gene_i_subcluster_percentages, 
+#              aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+#   geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+#   # Add total cell counts above the bar
+#   geom_text(aes(x = factor(sample), y = 100, label = total), 
+#             inherit.aes = FALSE, size = 3, angle = 90) +
+#   theme_minimal() +
+#   facet_grid(~gene_i) +
+#   theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+#   labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+#   scale_fill_manual(values = lighten(viridis::turbo(length(unique(gene_i_subcluster_percentages$clusters_sub))), amount = 0.4))
+# ggsave(p8, filename = paste0(dir, "/subclusters_within_gene_i_", group_name, ".pdf"), 
+#        width = 10, height = 5)
+# 
+# # ---- By guide_i ----
+# guide_i_subcluster_counts <- df_sub %>%
+#   group_by(sample, guide_i, clusters_sub) %>%
+#   summarise(count = n(), .groups = "drop")
+# 
+# guide_i_subcluster_percentages <- guide_i_subcluster_counts %>%
+#   group_by(sample, guide_i) %>%
+#   mutate(total = sum(count),
+#          percentage = (count / total) * 100) %>%
+#   ungroup()
+# 
+# p_guide_i <- ggplot(guide_i_subcluster_percentages, 
+#                     aes(x = factor(sample), y = percentage, fill = clusters_sub)) +
+#   geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+#   # Add total cell counts above the bar
+#   geom_text(aes(x = factor(sample), y = 100, label = total), 
+#             inherit.aes = FALSE, size = 3, angle = 90) +
+#   theme_minimal() +
+#   theme(strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), paper = "white") +
+#   facet_grid(~guide_i) +
+#   labs(x = "Sample", y = "Percentage of cells", fill = "Subcluster")+
+#   scale_fill_manual(values = lighten(viridis::turbo(length(unique(guide_i_subcluster_percentages$clusters_sub))), amount = 0.4))
+# 
+# ggsave(p_guide_i, filename = paste0(dir, "/subclusters_within_guide_i_", group_name, ".pdf"), 
+#        width = 10, height = 5)
 
 
 # Usage

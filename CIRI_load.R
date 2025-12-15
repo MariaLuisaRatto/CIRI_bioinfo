@@ -130,7 +130,13 @@ cds <- reduce_dimension(cds, reduction_method="UMAP", umap.fast_sgd = FALSE,core
 UMAP = as.data.frame(reducedDims(cds)$UMAP)
 names(UMAP) = c("x", "y")
 UMAP$nomi = rownames(UMAP)
-UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a", "guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
+num_pieces = length(strsplit(UMAP$nomi, "\\.")[[1]]) 
+if (num_pieces < 10) {
+  UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a", "guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
+} else if (num_pieces == 10) {
+  UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a1","guide_a2", "guide_i1","guide_i2", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
+}
+
 UMAP$sample = as.factor(UMAP$sample)
 p = ggplot(UMAP, aes(x, y, color = sample, alpha = 0.1)) +
   geom_point(size = 0.4)
@@ -147,6 +153,40 @@ p = ggplot(UMAP, aes(x, y, color = type, alpha = 0.1)) +
   geom_point(size = 0.4) + 
   facet_wrap(vars(type))
 ggsave(p, filename = paste0(dir,"/UMAP_type_facet.pdf"),
+       width = 18, height = 6)
+
+### SUBSAMPLED FACET PLOT BY TYPE
+# Count cells per type
+n_by_type <- UMAP %>%
+  group_by(type) %>%
+  summarise(n = n(), .groups = "drop")
+
+# Subsample within each type to equal size
+UMAP_balanced <- UMAP %>%
+  group_by(type) %>%
+  sample_n(min(n_by_type$n)) %>%
+  ungroup()
+
+# # Plot with grey background + colored subsample
+# p <- ggplot() +
+#   geom_point(data = UMAP,
+#              aes(x, y),
+#              color = "grey60",
+#              alpha = 0.1,
+#              size = 0.3) +
+#   geom_point(data = UMAP_balanced,
+#              aes(x, y, color = type),
+#              alpha = 0.7,
+#              size = 0.4) +
+#   facet_wrap(vars(type)) +
+#   theme_minimal()
+
+p = ggplot(UMAP_balanced, aes(x, y, color = type, alpha = 0.15)) +
+  geom_point(size = 0.4) +
+  facet_wrap(vars(type)) +
+  guides(alpha = "none")
+
+ggsave(p,filename = paste0(dir, "/UMAP_type_subsampled_facet.pdf"),
        width = 18, height = 6)
 
 #Plot by guide 
