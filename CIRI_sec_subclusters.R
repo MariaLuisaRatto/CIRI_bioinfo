@@ -11,15 +11,29 @@ suppressMessages(library(ggrepel))
 suppressMessages(library(colorspace))
 set.seed(1234597698)
 
-dir = "/Users/marialuisaratto/scripts/CIRI12_starting_dataset/"
-ccs = c("4")
-group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
-g = "SOX2"
+args <- commandArgs(trailingOnly = TRUE)
 
-load(paste0(dir, "/processed_cds.Rdata"))
+if (length(args) == 0) {
+  stop("Error: No directory provided. Please supply the input directory path.")
+}
+
+dir = args[1]
+ccs = c(strsplit(args[2], split = "-"))
+#dir = "/Users/marialuisaratto/scripts/CIRI12_starting_dataset/"
+#ccs = c("4")
+group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
+print(group_of_interest)
+g = "SOX2"
+g = args[3]
+
+#file = args[4]
+#load(paste0(dir, file))
+load(paste0(dir, "/processed_cds.RData"))
 clusters_to_keep = ccs
-group_name = "muscle"
-res = 0.1e-2
+group_name = args[4]
+#group_name = "muscle"
+#res = 0.1e-2
+res = as.numeric(args[5])
 #res = 1e-4
   
 # ---- Subset CDS ----

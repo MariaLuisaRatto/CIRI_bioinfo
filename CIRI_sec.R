@@ -11,16 +11,30 @@ suppressMessages(library(ggrepel))
 suppressMessages(library(colorspace))
 set.seed(1234597698)
 
-dir = "."
-ccs = c("4")
-group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
-control_name <- "NTCa_1A;NTCa_1B-NA;NA"
-#control_name <- "NTCa-NA"
+args <- commandArgs(trailingOnly = TRUE)
 
-load(paste0(dir, "/processed_cds.Rdata"))
+if (length(args) == 0) {
+  stop("Error: No directory provided. Please supply the input directory path.")
+}
+
+dir = args[1]
+ccs = c(strsplit(args[2], split = "-"))
+#ccs = c("4")
+group_of_interest = paste("Group", paste(ccs, collapse = "_"), sep = "_")
+print(group_of_interest)
+
+control_name = args[3]
+print(control_name)
+#control_name <- "NTCa_1A;NTCa_1B-NA;NA"
+#control_name <- "NTCa-NA"
+#file = args[4]
+#load(paste0(dir, file))
+file.exists(paste0(dir, "processed_cds.RData"))
+load(paste0(dir, "processed_cds.RData"))
 
 #### enrichment / depletion 
-min_cells_cluster = 40
+#min_cells_cluster = 40
+min_cells_cluster = as.numeric(args[4])
 
 #calculate cells x cluster and filter if too few
 colData(cds)$clusters = clusters(cds)

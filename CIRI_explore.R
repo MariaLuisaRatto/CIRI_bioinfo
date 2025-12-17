@@ -14,7 +14,15 @@ library(Seurat)
 a_genes = c("MYOD_1", "MYOD_2")
 i_genes = c("NANOG","OCT4","SOX2")
 
-dir = "/Users/marialuisaratto/scripts/CIRI/"
+#dir = "/Users/marialuisaratto/scripts/CIRI/"
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) == 0) {
+  stop("Error: No directory provided. Please supply the input directory path.")
+}
+
+
+dir <- args[1]
 
 ann = read.csv(paste0(dir, "/guides.csv"), header = F)
 names(ann) = c("feature", "seq", "type")
@@ -673,20 +681,20 @@ write.csv(assigned_wide, paste0(dir, "annotation_data.csv"))
 
 
 
-exp = read.csv("./filtered_annotated_filtered_feature_bc_matrix.csv", row.names = 1)
-
-exp = exp[, colSums(exp != 0) > 0]
-
-old_names = c(colnames(exp))
-old_names = sub("\\.", "-", old_names)
-colnames(exp) = old_names
-exp = exp[, colnames(exp) %in% assigned_wide$cell_barcode]
-
-# Create a named vector: old -> new
-name_map <- setNames(assigned_wide$new_names, assigned_wide$cell_barcode)
-
-# Replace column names in exp
-colnames(exp) <- name_map[colnames(exp)]
-
-write.csv(exp, "annotated_matrix.csv")
+# exp = read.csv("./filtered_annotated_filtered_feature_bc_matrix.csv", row.names = 1)
+# 
+# exp = exp[, colSums(exp != 0) > 0]
+# 
+# old_names = c(colnames(exp))
+# old_names = sub("\\.", "-", old_names)
+# colnames(exp) = old_names
+# exp = exp[, colnames(exp) %in% assigned_wide$cell_barcode]
+# 
+# # Create a named vector: old -> new
+# name_map <- setNames(assigned_wide$new_names, assigned_wide$cell_barcode)
+# 
+# # Replace column names in exp
+# colnames(exp) <- name_map[colnames(exp)]
+# 
+# write.csv(exp, "annotated_matrix.csv")
 

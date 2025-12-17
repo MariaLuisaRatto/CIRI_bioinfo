@@ -510,207 +510,125 @@ all_wide <- all_wide %>%
   filter(CRISPRa | CRISPRi)
 
 OG_CIRI = filter(CIRI_long, cell_barcode %in% all_wide$cell_barcode)
-CIRI_sec = filter(OG_CIRI, ! feature %in% a_genes & ! feature %in% i_genes)
+# --- 0) Prepare CIRI_sec and extract gene ---
+CIRI_sec <- filter(OG_CIRI, !feature %in% a_genes & !feature %in% i_genes) %>%
+  mutate(gene = str_extract(feature, "^[^_]+"))
 
-df_ratio <- CIRI_sec %>%
+# --- 1) Compute top1, top2, top3 UMIs and features deterministically ---
+# First, compute top1
+top1_df <- CIRI_sec %>%
   group_by(cell_barcode, type) %>%
-  summarise(
-    sorted_umis = list(sort(umi, decreasing = TRUE)),
-    .groups = "drop"
+  arrange(desc(umi), feature) %>% # deterministic fallback
+  slice(1) %>%
+  ungroup() %>%
+  select(cell_barcode, type, top1_umi = umi, top1_feature = feature, top1_gene = gene)
+
+# Next, compute top2 and top3 with tie-breaking
+ranked <- CIRI_sec %>%
+  left_join(top1_df, by = c("cell_barcode", "type")) %>%
+  group_by(cell_barcode, type) %>%
+  arrange(
+    desc(umi),
+    desc(gene == top1_gene),  # prefer same gene as top1 if tied
+    feature                    # deterministic fallback
   ) %>%
-  mutate(
-    top1 = sapply(sorted_umis, function(x) if(length(x) >= 1) x[1] else NA),
-    top2 = sapply(sorted_umis, function(x) if(length(x) >= 2) x[2] else NA),
-    top3 = sapply(sorted_umis, function(x) if(length(x) >= 3) x[3] else NA),
-    ratio = ifelse(!is.na(top2) & top2 > 0, (top1 + top2) / top3, Inf)
-  ) %>%
-  dplyr::select(cell_barcode, type, top1, top2, top3, ratio)
+  mutate(rank = row_number()) %>%
+  ungroup()
 
-
-tmp <- df_ratio %>%
-  pivot_longer(cols = c(top1, top2, top3), 
-               names_to = "rank", 
-               values_to = "UMIs")
-
-p <- ggplot(tmp, aes(x = UMIs, fill = rank)) +
-  geom_histogram(binwidth = 1, alpha = 0.3, position = "identity") +
-  facet_wrap(~type, scales = "free_y") +
-  theme_minimal() +
-  coord_cartesian(xlim = c(0, 2000), ylim = c(0, 1000)) +
-  labs(
-    title = "Distribution of UMIs of top 3 guides",
-    x = "UMIs",
-    y = "Count"
+# Pivot top1, top2, top3 UMIs and features
+ranked_wide <- ranked %>%
+  filter(rank <= 3) %>%
+  select(cell_barcode, type, rank, umi, feature) %>%
+  pivot_wider(
+    names_from = rank,
+    values_from = c(umi, feature),
+    names_prefix = "top"
   )
 
-ggsave("./top3_guides_overlay_hist.pdf", p, width = 20, height = 10)
+# Compute ratio for filtering
+ranked_wide <- ranked_wide %>%
+  mutate(
+    ratio = ifelse(!is.na(umi_top2) & umi_top2 > 0,
+                   (umi_top1 + umi_top2) / umi_top3,
+                   Inf)
+  )
 
-
-### Filter for ratio >= 10 and UMIs (top1 & top2) >= 4
-
-assigned = merge(
-  df_ratio, 
-  distinct(common[, c("cell_barcode", "CIRI", "CRISPRa", "CRISPRi")]), 
-  by = c("cell_barcode")
-)
-
-assigned <- assigned %>%
-  # Apply per-row filters
-  mutate(pass_filter = (top1 + top2 >= 4 & ratio >= 10)) %>%
-  
-  # Group by cell_barcode for conditional logic
+# --- 2) Merge with common annotations ---
+assigned <- merge(
+  ranked_wide,
+  distinct(common[, c("cell_barcode", "CIRI", "CRISPRa", "CRISPRi")]),
+  by = "cell_barcode"
+) %>%
+  mutate(pass_filter = (umi_top1 + umi_top2 >= 4 & ratio >= 10)) %>%
   group_by(cell_barcode) %>%
   filter(
-    # Case 1: CIRI TRUE -> both type a and i must pass
     (CIRI[1] == TRUE & all(pass_filter[type %in% c("a","i")])) |
-      
-      # Case 2: CRISPRa TRUE & CRISPRi FALSE -> only type a must pass
       (CRISPRa[1] == TRUE & CRISPRi[1] == FALSE & any(pass_filter[type == "a"])) |
-      
-      # Case 3: CRISPRi TRUE & CRISPRa FALSE -> only type i must pass
       (CRISPRi[1] == TRUE & CRISPRa[1] == FALSE & any(pass_filter[type == "i"]))
   ) %>%
-  ungroup()
+  ungroup() %>%
+  filter(pass_filter == TRUE)
 
-assigned_filtered = filter(assigned, pass_filter == TRUE)
-
-#Consider cell_barcodes are repeated in long df!!
-sum(assigned_filtered$CIRI)
-sum(assigned_filtered$CIRI == FALSE & assigned_filtered$CRISPRa == TRUE)
-sum(assigned_filtered$CIRI == FALSE & assigned_filtered$CRISPRi == TRUE)
-
-# Map features to both top1 and top2
-assigned_filtered <- assigned_filtered %>%
-  mutate(top1 = as.integer(top1), top2 = as.integer(top2))
-
-CIRI_sec_lookup <- CIRI_sec %>%
-  mutate(umi = as.integer(umi)) %>%
-  dplyr::select(cell_barcode, type, feature, umi) %>%
-  # if there are multiple rows for the same (cell_barcode, type, umi) we take the first
-  group_by(cell_barcode, type, umi) %>%
-  slice(1) %>%
-  ungroup()
-
-
-# 1) Join to get features matched to top1 and top2
-assigned_filtered <- assigned_filtered %>%
-  left_join(
-    CIRI_sec_lookup %>% rename(feature1 = feature),
-    by = c("cell_barcode", "type", "top1" = "umi")
-  ) %>%
-  left_join(
-    CIRI_sec_lookup %>% rename(feature2 = feature),
-    by = c("cell_barcode", "type", "top2" = "umi")
-  )
-
-assigned_filtered <- assigned_filtered %>%
-  # remove inconsistent type/flag combos
+# --- 3) Keep only consistent type/flag combos ---
+assigned <- assigned %>%
   filter(
     !(type == "a" & CRISPRa == FALSE),
     !(type == "i" & CRISPRi == FALSE)
   )
 
-# --- ADD CHECK: only keep rows where feature1 and feature2 are identical except for the last letter (A/B) --- #
-assigned_filtered <- assigned_filtered %>%
+# --- 4) Check top1/top2 feature consistency (A/B) ---
+assigned <- assigned %>%
   mutate(
-    # Extract gene, number, and letter separately
-    gene1 = str_extract(feature1, "^[^_]+"),
-    gene2 = str_extract(feature2, "^[^_]+"),
-    num1 = str_extract(feature1, "(?<=_)\\d+"),
-    num2 = str_extract(feature2, "(?<=_)\\d+"),
-    letter1 = str_extract(feature1, "[A-Za-z]$"),
-    letter2 = str_extract(feature2, "[A-Za-z]$")
-  )
-
-# Identify mismatched rows
-mismatched <- assigned_filtered %>%
-  filter(
-    !is.na(feature1) & !is.na(feature2) &
-      (
-        gene1 != gene2 | 
-          num1 != num2 | 
-          !((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A"))
-      )
+    gene1 = str_extract(feature_top1, "^[^_]+"),
+    gene2 = str_extract(feature_top2, "^[^_]+"),
+    num1 = str_extract(feature_top1, "(?<=_)\\d+"),
+    num2 = str_extract(feature_top2, "(?<=_)\\d+"),
+    letter1 = str_extract(feature_top1, "[A-Za-z]$"),
+    letter2 = str_extract(feature_top2, "[A-Za-z]$")
   ) %>%
-  mutate(
-    # make unordered pair so order doesn't matter
-    mismatch_pair = purrr::map2_chr(feature1, feature2, ~paste(sort(c(.x, .y)), collapse = ";"))
-  )
-
-# summarise unique mismatched pairs and counts
-mismatched_summary <- mismatched %>%
-  distinct(cell_barcode, mismatch_pair) %>%
-  count(mismatch_pair, name = "n_cells") %>%
-  arrange(desc(n_cells))
-
-print(mismatched_summary)
-# Optionally save
-write.csv(mismatched_summary, "mismatched_features.csv", row.names = FALSE)
-
-# keep only matched ones
-assigned_filtered <- assigned_filtered %>%
-  # Extract gene, number, and letter from both features
-  mutate(
-    gene1 = str_extract(feature1, "^[^_]+"),
-    gene2 = str_extract(feature2, "^[^_]+"),
-    num1 = str_extract(feature1, "(?<=_)\\d+"),
-    num2 = str_extract(feature2, "(?<=_)\\d+"),
-    letter1 = str_extract(feature1, "[A-Za-z]$"),
-    letter2 = str_extract(feature2, "[A-Za-z]$")
-  ) %>%
-  # Keep if one is NA, or they match by gene+number and differ only by A/B
   filter(
-    (is.na(feature1) & !is.na(feature2)) |
-      (!is.na(feature1) & is.na(feature2)) |
-      (
-        gene1 == gene2 &
-          num1 == num2 &
-          ((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A"))
-      )
+    (is.na(feature_top1) & !is.na(feature_top2)) |
+      (!is.na(feature_top1) & is.na(feature_top2)) |
+      (gene1 == gene2 & num1 == num2 & ((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A")))
   ) %>%
   select(-gene1, -gene2, -num1, -num2, -letter1, -letter2)
-# --------------------------------------------------------------------------- # <<<
 
-# collapse feature1 + feature2 into an unordered "feature_set"
+# --- 5) Collapse feature_top1 + feature_top2 into feature_set ---
 collapse_feats <- function(f1, f2) {
-  feats <- sort(na.omit(c(f1, f2)))  # sort makes order irrelevant
-  if (length(feats) == 0) return(NA_character_)
+  feats <- sort(na.omit(c(f1, f2)))
+  if(length(feats) == 0) return(NA_character_)
   paste(feats, collapse = ";")
 }
 
-assigned_filtered <- assigned_filtered %>%
-  mutate(feature_set = mapply(collapse_feats, feature1, feature2))
+assigned_filtered <- assigned %>%
+  mutate(feature_set = mapply(collapse_feats, feature_top1, feature_top2))
 
-
-# 2) Recompute feature counts (unordered)
+# --- 6) Downstream: counts, wide table, join with all_wide ---
 counts <- assigned_filtered %>%
-  dplyr::select(cell_barcode, feature_set) %>%
-  filter(!is.na(feature_set)) %>%
-  distinct(cell_barcode, feature_set) %>%  # one per cell
-  count(feature_set, name = "Freq") %>%
-  arrange(desc(Freq))
-
-write.csv(counts, file = "./features_count.csv", row.names = FALSE)
-
-
-counts_CIRI <- assigned_filtered %>%
-  filter(CIRI == TRUE) %>%
-  dplyr::select(cell_barcode, feature_set) %>%
+  select(cell_barcode, feature_set) %>%
   filter(!is.na(feature_set)) %>%
   distinct(cell_barcode, feature_set) %>%
   count(feature_set, name = "Freq") %>%
   arrange(desc(Freq))
+write.csv(counts, file = "./features_count.csv", row.names = FALSE)
 
+# Repeat for CIRI == TRUE
+counts_CIRI <- assigned_filtered %>%
+  filter(CIRI == TRUE) %>%
+  select(cell_barcode, feature_set) %>%
+  filter(!is.na(feature_set)) %>%
+  distinct(cell_barcode, feature_set) %>%
+  count(feature_set, name = "Freq") %>%
+  arrange(desc(Freq))
 write.csv(counts_CIRI, file = "./features_count_CIRI.csv", row.names = FALSE)
 
-
-# 3) Build wide table (but use collapsed feature_set per type instead of f1/f2 separately)
+# Wide table and feature_a/feature_i assignment
 assigned_summary <- assigned_filtered %>%
   group_by(cell_barcode, type) %>%
   summarise(
-    feature_set = if(length(na.omit(feature_set)) > 0) na.omit(feature_set)[1] else NA_character_,
-    top1 = if(all(is.na(top1))) NA_integer_ else max(top1, na.rm = TRUE),
-    top2 = if(all(is.na(top2))) NA_integer_ else max(top2, na.rm = TRUE),
+    feature_set = if(length(na.omit(feature_set))>0) na.omit(feature_set)[1] else NA_character_,
+    top1 = if(all(is.na(umi_top1))) NA_integer_ else max(umi_top1, na.rm = TRUE),
+    top2 = if(all(is.na(umi_top2))) NA_integer_ else max(umi_top2, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -719,14 +637,271 @@ assigned_summary <- assigned_filtered %>%
     values_from = c(feature_set, top1, top2)
   )
 
-
-# 4) Join with annotation and compute final features
 assigned_wide <- assigned_summary %>%
   left_join(all_wide, by = "cell_barcode") %>%
   mutate(
     feature_a = ifelse(CRISPRa == TRUE, feature_set_a, NA_character_),
     feature_i = ifelse(CRISPRi == TRUE, feature_set_i, NA_character_)
   )
+
+
+
+
+
+
+
+
+# CIRI_sec = filter(OG_CIRI, ! feature %in% a_genes & ! feature %in% i_genes)
+# CIRI_sec <- CIRI_sec %>%
+#   mutate(gene = str_extract(feature, "^[^_]+"))
+# 
+# top1_df <- CIRI_sec %>%
+#   group_by(cell_barcode, type) %>%
+#   arrange(desc(umi), feature) %>%  # deterministic fallback
+#   slice(1) %>%
+#   ungroup() %>%
+#   select(cell_barcode, type, top1_umi = umi, top1_feature = feature, top1_gene = gene)
+# 
+# ranked <- CIRI_sec %>%
+#   left_join(top1_df, by = c("cell_barcode", "type")) %>%
+#   group_by(cell_barcode, type) %>%
+#   arrange(
+#     desc(umi),
+#     desc(gene == top1_gene), # prefer same gene as top1 if tied
+#     feature  # deterministic fallback
+#   ) %>%
+#   mutate(rank = row_number()) %>%
+#   ungroup()
+# 
+# ranked_wide <- ranked %>%
+#   filter(rank <= 3) %>%
+#   select(cell_barcode, type, rank, umi, feature) %>%
+#   pivot_wider(
+#     names_from = rank,
+#     values_from = c(umi, feature),
+#     names_prefix = "top"
+#   )
+# 
+# ranked_wide = filter(ranked_wide, umi_top1 > 0)
+# 
+# 
+# 
+# df_ratio <- CIRI_sec %>%
+#   group_by(cell_barcode, type) %>%
+#   summarise(
+#     sorted_umis = list(sort(umi, decreasing = TRUE)),
+#     .groups = "drop"
+#   ) %>%
+#   mutate(
+#     top1 = sapply(sorted_umis, function(x) if(length(x) >= 1) x[1] else NA),
+#     top2 = sapply(sorted_umis, function(x) if(length(x) >= 2) x[2] else NA),
+#     top3 = sapply(sorted_umis, function(x) if(length(x) >= 3) x[3] else NA),
+#     ratio = ifelse(!is.na(top2) & top2 > 0, (top1 + top2) / top3, Inf)
+#   ) %>%
+#   dplyr::select(cell_barcode, type, top1, top2, top3, ratio)
+# 
+# 
+# tmp <- df_ratio %>%
+#   pivot_longer(cols = c(top1, top2, top3), 
+#                names_to = "rank", 
+#                values_to = "UMIs")
+# 
+# p <- ggplot(tmp, aes(x = UMIs, fill = rank)) +
+#   geom_histogram(binwidth = 1, alpha = 0.3, position = "identity") +
+#   facet_wrap(~type, scales = "free_y") +
+#   theme_minimal() +
+#   coord_cartesian(xlim = c(0, 2000), ylim = c(0, 1000)) +
+#   labs(
+#     title = "Distribution of UMIs of top 3 guides",
+#     x = "UMIs",
+#     y = "Count"
+#   )
+# 
+# ggsave("./top3_guides_overlay_hist.pdf", p, width = 20, height = 10)
+# 
+# 
+# ### Filter for ratio >= 10 and UMIs (top1 & top2) >= 4
+# 
+# assigned = merge(
+#   df_ratio, 
+#   distinct(common[, c("cell_barcode", "CIRI", "CRISPRa", "CRISPRi")]), 
+#   by = c("cell_barcode")
+# )
+# 
+# assigned <- assigned %>%
+#   # Apply per-row filters
+#   mutate(pass_filter = (top1 + top2 >= 4 & ratio >= 10)) %>%
+#   
+#   # Group by cell_barcode for conditional logic
+#   group_by(cell_barcode) %>%
+#   filter(
+#     # Case 1: CIRI TRUE -> both type a and i must pass
+#     (CIRI[1] == TRUE & all(pass_filter[type %in% c("a","i")])) |
+#       
+#       # Case 2: CRISPRa TRUE & CRISPRi FALSE -> only type a must pass
+#       (CRISPRa[1] == TRUE & CRISPRi[1] == FALSE & any(pass_filter[type == "a"])) |
+#       
+#       # Case 3: CRISPRi TRUE & CRISPRa FALSE -> only type i must pass
+#       (CRISPRi[1] == TRUE & CRISPRa[1] == FALSE & any(pass_filter[type == "i"]))
+#   ) %>%
+#   ungroup()
+# 
+# assigned_filtered = filter(assigned, pass_filter == TRUE)
+# 
+# #Consider cell_barcodes are repeated in long df!!
+# sum(assigned_filtered$CIRI)
+# sum(assigned_filtered$CIRI == FALSE & assigned_filtered$CRISPRa == TRUE)
+# sum(assigned_filtered$CIRI == FALSE & assigned_filtered$CRISPRi == TRUE)
+# 
+# # Map features to both top1 and top2
+# assigned_filtered <- assigned_filtered %>%
+#   mutate(top1 = as.integer(top1), top2 = as.integer(top2))
+# 
+# 
+# CIRI_sec_lookup <- CIRI_sec %>%
+#   mutate(umi = as.integer(umi)) %>%
+#   dplyr::select(cell_barcode, type, feature, umi) %>%
+#   # if there are multiple rows for the same (cell_barcode, type, umi) we take the first
+#   group_by(cell_barcode, type, umi) %>%
+#   slice(1) %>%
+#   ungroup()
+# 
+# 
+# # 1) Join to get features matched to top1 and top2
+# assigned_filtered <- assigned_filtered %>%
+#   left_join(
+#     CIRI_sec_lookup %>% rename(feature1 = feature),
+#     by = c("cell_barcode", "type", "top1" = "umi")
+#   ) %>%
+#   left_join(
+#     CIRI_sec_lookup %>% rename(feature2 = feature),
+#     by = c("cell_barcode", "type", "top2" = "umi")
+#   )
+# 
+# assigned_filtered <- assigned_filtered %>%
+#   # remove inconsistent type/flag combos
+#   filter(
+#     !(type == "a" & CRISPRa == FALSE),
+#     !(type == "i" & CRISPRi == FALSE)
+#   )
+# 
+# # --- ADD CHECK: only keep rows where feature1 and feature2 are identical except for the last letter (A/B) --- #
+# assigned_filtered <- assigned_filtered %>%
+#   mutate(
+#     # Extract gene, number, and letter separately
+#     gene1 = str_extract(feature1, "^[^_]+"),
+#     gene2 = str_extract(feature2, "^[^_]+"),
+#     num1 = str_extract(feature1, "(?<=_)\\d+"),
+#     num2 = str_extract(feature2, "(?<=_)\\d+"),
+#     letter1 = str_extract(feature1, "[A-Za-z]$"),
+#     letter2 = str_extract(feature2, "[A-Za-z]$")
+#   )
+# 
+# # Identify mismatched rows
+# mismatched <- assigned_filtered %>%
+#   filter(
+#     !is.na(feature1) & !is.na(feature2) &
+#       (
+#         gene1 != gene2 | 
+#           num1 != num2 | 
+#           !((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A"))
+#       )
+#   ) %>%
+#   mutate(
+#     # make unordered pair so order doesn't matter
+#     mismatch_pair = purrr::map2_chr(feature1, feature2, ~paste(sort(c(.x, .y)), collapse = ";"))
+#   )
+# 
+# # summarise unique mismatched pairs and counts
+# mismatched_summary <- mismatched %>%
+#   distinct(cell_barcode, mismatch_pair) %>%
+#   count(mismatch_pair, name = "n_cells") %>%
+#   arrange(desc(n_cells))
+# 
+# print(mismatched_summary)
+# # Optionally save
+# write.csv(mismatched_summary, "mismatched_features.csv", row.names = FALSE)
+# 
+# # keep only matched ones
+# assigned_filtered <- assigned_filtered %>%
+#   # Extract gene, number, and letter from both features
+#   mutate(
+#     gene1 = str_extract(feature1, "^[^_]+"),
+#     gene2 = str_extract(feature2, "^[^_]+"),
+#     num1 = str_extract(feature1, "(?<=_)\\d+"),
+#     num2 = str_extract(feature2, "(?<=_)\\d+"),
+#     letter1 = str_extract(feature1, "[A-Za-z]$"),
+#     letter2 = str_extract(feature2, "[A-Za-z]$")
+#   ) %>%
+#   # Keep if one is NA, or they match by gene+number and differ only by A/B
+#   filter(
+#     (is.na(feature1) & !is.na(feature2)) |
+#       (!is.na(feature1) & is.na(feature2)) |
+#       (
+#         gene1 == gene2 &
+#           num1 == num2 &
+#           ((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A"))
+#       )
+#   ) %>%
+#   select(-gene1, -gene2, -num1, -num2, -letter1, -letter2)
+# # --------------------------------------------------------------------------- # <<<
+# 
+# # collapse feature1 + feature2 into an unordered "feature_set"
+# collapse_feats <- function(f1, f2) {
+#   feats <- sort(na.omit(c(f1, f2)))  # sort makes order irrelevant
+#   if (length(feats) == 0) return(NA_character_)
+#   paste(feats, collapse = ";")
+# }
+# 
+# assigned_filtered <- assigned_filtered %>%
+#   mutate(feature_set = mapply(collapse_feats, feature1, feature2))
+# 
+# 
+# # 2) Recompute feature counts (unordered)
+# counts <- assigned_filtered %>%
+#   dplyr::select(cell_barcode, feature_set) %>%
+#   filter(!is.na(feature_set)) %>%
+#   distinct(cell_barcode, feature_set) %>%  # one per cell
+#   count(feature_set, name = "Freq") %>%
+#   arrange(desc(Freq))
+# 
+# write.csv(counts, file = "./features_count.csv", row.names = FALSE)
+# 
+# 
+# counts_CIRI <- assigned_filtered %>%
+#   filter(CIRI == TRUE) %>%
+#   dplyr::select(cell_barcode, feature_set) %>%
+#   filter(!is.na(feature_set)) %>%
+#   distinct(cell_barcode, feature_set) %>%
+#   count(feature_set, name = "Freq") %>%
+#   arrange(desc(Freq))
+# 
+# write.csv(counts_CIRI, file = "./features_count_CIRI.csv", row.names = FALSE)
+# 
+# 
+# # 3) Build wide table (but use collapsed feature_set per type instead of f1/f2 separately)
+# assigned_summary <- assigned_filtered %>%
+#   group_by(cell_barcode, type) %>%
+#   summarise(
+#     feature_set = if(length(na.omit(feature_set)) > 0) na.omit(feature_set)[1] else NA_character_,
+#     top1 = if(all(is.na(top1))) NA_integer_ else max(top1, na.rm = TRUE),
+#     top2 = if(all(is.na(top2))) NA_integer_ else max(top2, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
+#   pivot_wider(
+#     id_cols = cell_barcode,
+#     names_from = type,
+#     values_from = c(feature_set, top1, top2)
+#   )
+# 
+# 
+# # 4) Join with annotation and compute final features
+# assigned_wide <- assigned_summary %>%
+#   left_join(all_wide, by = "cell_barcode") %>%
+#   mutate(
+#     feature_a = ifelse(CRISPRa == TRUE, feature_set_a, NA_character_),
+#     feature_i = ifelse(CRISPRi == TRUE, feature_set_i, NA_character_)
+#   )
 
 
 # 5) Combination counts

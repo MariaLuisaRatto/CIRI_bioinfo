@@ -13,10 +13,20 @@ library(Seurat)
 library(biomaRt)
 library(data.table)
 
-dir = "/Users/marialuisaratto/scripts/CIRI/"
+args <- commandArgs(trailingOnly = TRUE)
 
-# Load 10X data
-data <- Read10X_h5(paste0(dir, "filtered_feature_bc_matrix.h5"), unique.features = TRUE)
+if (length(args) == 0) {
+  stop("Error: No directory provided. Please supply the input directory path.")
+}
+
+
+dir <- args[1]
+
+message(paste("Loading data from:", dir))
+
+#Load 10X data
+file = args[2]
+data <- Read10X_h5(file.path(dir, file), unique.features = TRUE)
 data_seurat <- CreateSeuratObject(counts = data$`Gene Expression`, assay = "RNA")
 
 # Calculate percentages ribo mito
@@ -47,7 +57,7 @@ p = ggplot(qc_data, aes(x = percent.mt, y = percent.rb, colour = nCount_RNA)) +
 ggsave(p, filename = paste0(dir, "RiboMito.pdf"), width = 10, height = 10)
 
 #filter ngenes x cell 
-# Filter cells with < 100 detected genes
+# Filter cells with < 250 detected genes
 data_seurat <- subset(data_seurat, subset = nFeature_RNA >= 250)
 
 # Calculate mitochondrial and ribosomal gene percentages
@@ -77,7 +87,11 @@ p <- ggplot(qc_data, aes(x = percent.mt, y = percent.rb, colour = nCount_RNA)) +
 ggsave(p, filename = paste0(dir, "RiboMito_filtered.pdf"), width = 10, height = 10)
 
 # Get protein-coding genes
-mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+mart <- useMart(
+  biomart = "ensembl", 
+  dataset = "hsapiens_gene_ensembl", 
+  host = "https://sep2025.archive.ensembl.org" 
+)
 all_coding_genes <- getBM(
   mart = mart,
   attributes = c("ensembl_gene_id", "hgnc_symbol"),

@@ -1,19 +1,20 @@
 #!/usr/bin/env Rscript
 args = commandArgs(trailingOnly=TRUE)
 #ARGS
-dir = "."
-#dir = as.character(args[1])
+#dir = "."
+dir = as.character(args[1])
 print(paste("Folder:", dir))
-file = "cds_sample_1_ordered.RData"
-#file = args[2]
+#file = "cds_sample_1_ordered.RData"
+file = args[2]
 print(paste("File:", file))
-pseudotime = "pseudotime_muscle_1.csv"
+#pseudotime = "pseudotime_muscle_1.csv"
 #pseudotime = "signature_values_csv/sarcomere_core.csv"
-#pseudotime = args[3]
+pseudotime = args[3]
 print(paste("Pseudotime file:", pseudotime))
-analysis = "pseudotime_sample_1"
-
-all = T
+#analysis = "pseudotime_sample_1"
+analysis = args[4]
+all = args[5]
+#all = T
 #all = as.logical(args[4])
 print(paste("All:", all))
 
@@ -865,3 +866,6 @@ if (nrow(tmp_ctrl_ntca) < 5) {
     message("No significant results or no comparisons run for NTCa analysis.")
   }
 }
+
+
+
