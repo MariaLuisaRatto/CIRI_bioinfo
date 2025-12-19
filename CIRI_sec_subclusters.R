@@ -32,9 +32,11 @@ load(paste0(dir, "/processed_cds.RData"))
 clusters_to_keep = ccs
 group_name = args[4]
 #group_name = "muscle"
-#res = 0.1e-2
+#res = 1e-3
 res = as.numeric(args[5])
 #res = 1e-4
+#example command 
+#Rscript ../CIRI_sec_subclusters.R /analysis/data/ 3 SOX2 muscle 1e-4
   
 # ---- Subset CDS ----
 cds_sub <- cds[, colData(cds)$clusters %in% clusters_to_keep]
@@ -75,6 +77,8 @@ p_sub <- plot_cells(
 ggsave(p_sub, filename = paste0(dir, "/UMAP_", group_name, "_subclusters.pdf"),
        width = 5, height = 4)
 
+print("Subclustering done")
+
 
 # ---- Extract UMAP coordinates ----
 UMAP_sub <- as.data.frame(reducedDims(cds_sub)$UMAP)
@@ -83,34 +87,35 @@ UMAP_sub$nomi <- rownames(UMAP_sub)
 num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
 
-if(num_pieces < 10){
+#if(num_pieces < 10){
   UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
-} else if(num_pieces == 10){
-  # Split into max 6 parts; if fewer, fill with NA instead of shifting
-  UMAP_sub <- separate(
-    UMAP_sub,
-    nomi,
-    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2","gene_a", "gene_i", "gene_comb", "type"),
-    sep = "\\.",
-    remove = FALSE,
-    convert = TRUE,
-    fill = "right"   # <-- important: pads missing with NA instead of shifting
-  )
-  
-  UMAP_sub = mutate(UMAP_sub, comb = paste0(guide_a1,";", guide_a2,"-", guide_i1, ";", guide_i2))
-  UMAP_sub <- UMAP_sub %>%
-    mutate(gene_a = sapply(strsplit(guide_a1, "_"), `[`, 1))
-  UMAP_sub <- UMAP_sub %>%
-    mutate(gene_i = sapply(strsplit(guide_i1, "_"), `[`, 1))
-  UMAP_sub = mutate(UMAP_sub, gene_comb = paste0(gene_a, "-", gene_i))
-  
-  UMAP_sub = mutate(UMAP_sub, guide_a = paste(guide_a1, guide_a2, sep = ";"))
-  UMAP_sub = mutate(UMAP_sub, guide_i = paste(guide_i1, guide_i2, sep = ";"))
-}
+# } else if(num_pieces == 10){
+#   # Split into max 6 parts; if fewer, fill with NA instead of shifting
+#   UMAP_sub <- separate(
+#     UMAP_sub,
+#     nomi,
+#     into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2","gene_a", "gene_i", "gene_comb", "type"),
+#     sep = "\\.",
+#     remove = FALSE,
+#     convert = TRUE,
+#     fill = "right"   # <-- important: pads missing with NA instead of shifting
+#   )
+#   
+#   UMAP_sub = mutate(UMAP_sub, comb = paste0(guide_a1,";", guide_a2,"-", guide_i1, ";", guide_i2))
+#   UMAP_sub <- UMAP_sub %>%
+#     mutate(gene_a = sapply(strsplit(guide_a1, "_"), `[`, 1))
+#   UMAP_sub <- UMAP_sub %>%
+#     mutate(gene_i = sapply(strsplit(guide_i1, "_"), `[`, 1))
+#   UMAP_sub = mutate(UMAP_sub, gene_comb = paste0(gene_a, "-", gene_i))
+#   
+#   UMAP_sub = mutate(UMAP_sub, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+#   UMAP_sub = mutate(UMAP_sub, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+# }
 
 
 UMAP_sub$sample <- as.factor(UMAP_sub$sample)
 
+print("UMAPs...")
 # ---- Base UMAP plots ----
 p <- ggplot(UMAP_sub, aes(x, y, color = sample, alpha = 0.1)) +
   geom_point(size = 0.4) +
@@ -218,14 +223,35 @@ ggsave(p, filename = paste0(dir, "/UMAP_top_markers_", group_name, ".pdf"),
        width = 9, height = 9)
 
 #PLOT GENE EXPRESSION
+print("Plotting gene expression...")
 genes = "genes_of_interest.txt"
-glist = c(unique(t(read.delim(paste0(dir, "/", genes), sep = ",", header = F))))
+glist <- readLines(paste0(dir, "/", genes))
+glist <- trimws(glist)
+glist <- glist[glist != ""]
+glist <- unique(glist)
 #put gene names in $gene_short_name to solve bug
-rowData(cds_sub)$gene_name <- rownames(cds_sub)
-rowData(cds_sub)$gene_short_name <- rowData(cds_sub)$gene_name
+old_names <- rownames(cds_sub)
+new_names <- make.unique(old_names)
+
+rownames(cds_sub) <- new_names
+rowData(cds_sub)$gene_short_name <- new_names
+#rowData(cds_sub)$gene_name <- rownames(cds_sub)
+#rowData(cds_sub)$gene_short_name <- rowData(cds_sub)$gene_name
+
+valid_genes <- intersect(
+  glist,
+  rowData(cds_sub)$gene_short_name
+)
+
+valid_genes  # sanity check
+any(duplicated(colData(cds_sub)$clusters_sub))
+
+colData(cds_sub)$clusters_sub <- factor(
+  as.character(colData(cds_sub)$clusters_sub)
+)
 
 p = plot_cells(cds_sub,
-               genes = glist,
+               genes = valid_genes,
                label_cell_groups = T,
                show_trajectory_graph = FALSE)+
   labs(x = "UMAP 1", y = "UMAP 2", title = "")#+
@@ -234,16 +260,17 @@ p = plot_cells(cds_sub,
 ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name, ".pdf"),
        width = 10, height = 10)
 
-p = plot_cells(cds_sub,
-               genes = c(unique(UMAP_sub$gene_a), unique(UMAP_sub$gene_i)),
-               label_cell_groups = T,
-               show_trajectory_graph = FALSE)+
-  labs(x = "UMAP 1", y = "UMAP 2", title = "")
-
-ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
-       width = 10, height = 10)
+# p = plot_cells(cds_sub,
+#                genes = c(unique(UMAP_sub$gene_a), unique(UMAP_sub$gene_i)),
+#                label_cell_groups = T,
+#                show_trajectory_graph = FALSE)+
+#   labs(x = "UMAP 1", y = "UMAP 2", title = "")
+# 
+# ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
+#        width = 10, height = 10)
 
 ## ---- PSEUDOTIME ----
+print("Running pseudotime...")
 cds_sub <- learn_graph(cds_sub)
 
 # Helper function to identify the root principal node with the lowest TTN expression

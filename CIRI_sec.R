@@ -29,12 +29,18 @@ print(control_name)
 #control_name <- "NTCa-NA"
 #file = args[4]
 #load(paste0(dir, file))
+
+
 file.exists(paste0(dir, "processed_cds.RData"))
 load(paste0(dir, "processed_cds.RData"))
 
 #### enrichment / depletion 
 #min_cells_cluster = 40
 min_cells_cluster = as.numeric(args[4])
+
+#example command
+#Rscript ../CIRI_sec.R /analysis/data/ 3 "NTCa_1A;NTCa_1B-NA;NA" 40 
+
 
 #calculate cells x cluster and filter if too few
 colData(cds)$clusters = clusters(cds)

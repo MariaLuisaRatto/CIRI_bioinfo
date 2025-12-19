@@ -13,10 +13,20 @@ pseudotime = args[3]
 print(paste("Pseudotime file:", pseudotime))
 #analysis = "pseudotime_sample_1"
 analysis = args[4]
-all = args[5]
+all = as.logical(args[5])
 #all = T
 #all = as.logical(args[4])
 print(paste("All:", all))
+#control_comb = args[6]
+control_target_comb = args[6]
+#control_comb = c("NTCa-NTCi")
+min_cells_CIRI = args[7]
+
+#Run gene - pseudotime correlation analysis? 
+correlation = F
+
+##example command 
+#Rscript ../CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv musce_1 TRUE NTCa_1A;NTCa_1B-NA;NA 8
 
 print("Starting...")
 
@@ -50,26 +60,27 @@ analysis = names(pt)
 names(pt) = c("pseudotime")
 
 #CUMOLATIVE FREQ
+print("Cumolative frequency...")
 pt$nomi = rownames(pt)
 num_pieces <- length(strsplit(pt$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
 
-if(num_pieces == 8){
+#if(num_pieces == 8){
   pt <- separate(pt, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
-} else if(num_pieces == 10){
-  pt <- separate(
-    pt,
-    nomi,
-    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "gene_comb", "type"),
-    sep = "\\.",
-    remove = FALSE,
-    convert = TRUE,
-    fill = "right"
-  )
-  
-  pt = mutate(pt, guide_a = paste(guide_a1, guide_a2, sep = ";"))
-  pt = mutate(pt, guide_i = paste(guide_i1, guide_i2, sep = ";"))
-}
+# } else if(num_pieces == 10){
+#   pt <- separate(
+#     pt,
+#     nomi,
+#     into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "gene_comb", "type"),
+#     sep = "\\.",
+#     remove = FALSE,
+#     convert = TRUE,
+#     fill = "right"
+#   )
+#   
+#   pt = mutate(pt, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+#   pt = mutate(pt, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+# }
 
 pt$sample = as.factor(pt$sample)
 
@@ -140,7 +151,7 @@ if (length(unique(pt$guide_i)) < 21) {
 
 
 # --- KS TEST based on control samples ---
-
+print("KS TESTS")
 control_genes_a = c("NTCa", "NA")
 control_genes_i = c("NTCi", "NA")
 control_guides_a = control_genes_a
@@ -309,9 +320,15 @@ for (t in unique(pt$type)) {
 pt = mutate(pt, guide_comb = paste(guide_a, guide_i, sep = "-"))
 pt_CIRI = filter(pt, type == "CIRI")
 # Remove guide_comb groups with fewer than 10 cells inside CIRI
+pt_CIRI %>%
+  group_by(guide_comb, sample) %>%
+  summarise(n_cells = n(), .groups = "drop") %>%
+  arrange(sample, desc(n_cells))
+
+
 pt_CIRI = pt_CIRI %>%
   group_by(guide_comb, sample) %>%
-  filter(n() >= 8) %>%
+  filter(n() >= min_cells_CIRI) %>%
   ungroup()
 
 message("Remaining guide_comb in CIRI after filtering: ",
@@ -320,13 +337,13 @@ message("Remaining guide_comb in CIRI after filtering: ",
 ###############################################
 # --- CUMULATIVE FREQUENCY PER SAMPLE (guide_comb) ---
 ###############################################
-
-samples = unique(pt$sample)
-
-for (s in samples) {
-  tmp = filter(pt_CIRI, sample == s)
+if (length(unique(pt_CIRI$guide_comb)) > 0) {
+  samples = unique(pt$sample)
   
-  p = ggplot(tmp, aes(pseudotime, colour = guide_i)) +
+  for (s in samples) {
+    tmp = filter(pt_CIRI, sample == s)
+    
+    p = ggplot(tmp, aes(pseudotime, colour = guide_i)) +
       stat_ecdf(geom = "step") +
       theme_classic(base_size = 14) +
       ylab("Cumulative frequency") +
@@ -340,249 +357,251 @@ for (s in samples) {
       plot = p,
       width = 8, height = 15
     )
-  
+    
     print(length(unique(tmp$guide_comb)))
     #if (length(unique(tmp$guide_comb)) < 26) {
-      p = ggplot(tmp, aes(pseudotime, colour = guide_i, linetype = guide_a)) +
-        stat_ecdf(geom = "step") +
-        theme_classic(base_size = 14) +
-        ylab("Cumulative frequency") +
-        xlab("monocle pseudotime") +
-        ggtitle(paste("Cumulative frequency on", analysis, "sample", s)) +
-        scale_color_manual(values = viridis::turbo(length(unique(tmp$guide_i))))
-      
-      ggsave(
-        filename = paste0(dir, "/cumulative_frequency_", analysis, "_guide_comb_sample_", s, ".pdf"),
-        plot = p,
-        width = 14, height = 10
-      )
-   # } else {
+    p = ggplot(tmp, aes(pseudotime, colour = guide_i, linetype = guide_a)) +
+      stat_ecdf(geom = "step") +
+      theme_classic(base_size = 14) +
+      ylab("Cumulative frequency") +
+      xlab("monocle pseudotime") +
+      ggtitle(paste("Cumulative frequency on", analysis, "sample", s)) +
+      scale_color_manual(values = viridis::turbo(length(unique(tmp$guide_i))))
+    
+    ggsave(
+      filename = paste0(dir, "/cumulative_frequency_", analysis, "_guide_comb_sample_", s, ".pdf"),
+      plot = p,
+      width = 14, height = 10
+    )
+    # } else {
     #  message("Too many guide_comb for sample ", s)
     #}
-}
-
-###############################################
-# --- KS-TEST and VOLCANO for guide_comb (CIRI only) ---
-###############################################
-
-control_comb = c("NTCa-NTCi")
-
-ks_df = data.frame()
-
-for (gc in unique(pt_CIRI$guide_comb)) {
-  tmp_case = filter(pt_CIRI, guide_comb == gc)
-  
-  if (nrow(tmp_case) < 2 || length(unique(tmp_case$pseudotime)) <= 1)
-    next
-  
-  tmp_ctrl = filter(pt_CIRI, guide_comb %in% control_comb)
-  
-  if (nrow(tmp_ctrl) < 2 || length(unique(tmp_ctrl$pseudotime)) <= 1)
-    next
-  
-  ks_g = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "greater")
-  ks_l = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "less")
-  
-  ks_df = rbind(
-    ks_df,
-    data.frame(
-      guide_comb = gc,
-      pval = ks_g$p.value,
-      stat = -ks_g$statistic[["D^+"]],
-      direction = "greater"
-    ),
-    data.frame(
-      guide_comb = gc,
-      pval = ks_l$p.value,
-      stat = ks_l$statistic[["D^-"]],
-      direction = "less"
-    )
-  )
-}
-
-if (nrow(ks_df) > 0) {
-  ks_df$padj = p.adjust(ks_df$pval, method = "BH")
-  ks_df$neglog = -log10(ks_df$padj)
-  ks_df$sig = ks_df$padj <= 0.05
-  
-  write.csv(
-    ks_df,
-    paste0(dir, "/CIRI_guide_comb_ks_statistics.csv"),
-    row.names = FALSE
-  )
-  
-  library(ggrepel)
-  
-  p_volc = ggplot(ks_df, aes(x = stat, y = neglog)) +
-    geom_point(aes(colour = direction), alpha = 0.5, size = 2) +
-    geom_text_repel(aes(label = guide_comb), size = 3, max.overlaps = 20) +
-    geom_hline(yintercept = -log10(0.05), linetype = "dotted", color = "red") +
-    geom_vline(xintercept = 0, linetype = "dotted") +
-    theme_minimal(base_size = 14) +
-    labs(
-      title = "KS volcano plot for guide_comb (CIRI)",
-      x = "KS statistic",
-      y = "-log10 adj p-value"
-    ) +
-    scale_color_viridis_d()
-  
-  ggsave(
-    filename = paste0(dir, "/CIRI_volcano_guide_comb.pdf"),
-    plot = p_volc,
-    width = 12, height = 7
-  )
+  }
 }
 
 
-# --- KS TEST based on control genes_a and genes_i ---
-ks_stat = data.frame()
-tmp2 = pt
 
-# loop for gene_a
-for (c in unique(pt$gene_a)) {
-  tryCatch({
-    print(c)
-    tmp_TET = filter(tmp2, gene_a == c)
-    
-    if (all == T) {
-      for (CG in control_genes_a) {
-        tryCatch({
-          print(CG)
-          tmp_CTR = filter(tmp2, gene_a == CG)
-          
-          ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
-          ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis = paste0("vs", CG), type = "greater"))
-          
-          ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
-          ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis = paste0("vs", CG), type = "less"))
-        }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-      }
-    }
-    
-    # control together
-    tmp_CTR = filter(tmp2, gene_a %in% control_genes_a)
-    ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
-    ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
-    
-    ks_stat = rbind(ks_stat, 
-                    data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlGenes_a", type="greater"),
-                    data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlGenes_a", type="less"))
-    
-  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-}
-
-ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
-ks_stat$sig <- ks_stat$padj <= 0.05
-
-ks_stat_fil = ks_stat %>%
-  group_by(gene, analysis) %>%
-  filter(padj == min(padj)) %>%
-  ungroup() %>% 
-  distinct()
-
-write.csv(ks_stat, file= paste0(dir, "/genes_a_ks_statistics_vscontrol_genes_all",all, "_", analysis, ".csv"), row.names=FALSE)
-
-p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
-  geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
-  ggrepel::geom_text_repel(
-    data=ks_stat_fil,
-    aes(label = gene),
-    size = 4,
-    max.overlaps=10
-  ) +
-  geom_hline(yintercept = log10(0.05)*-1, linetype="dotted", color="red") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle("KS test statistics  genes_a") +
-  theme_minimal() +
-  labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
-  scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
-
-ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_a_all",all, "_", analysis, ".pdf"),
-       width = 14, height = 8)
-
-
-
-# loop for gene_i
-ks_stat = data.frame()
-tmp2 = pt
-for (c in unique(pt$gene_i)) {
-  tryCatch({
-    print(c)
-    tmp_TET = filter(tmp2, gene_i == c)
-    
-    if (all == T) {
-      for (CG in control_genes_i) {
-        tryCatch({
-          print(CG)
-          tmp_CTR = filter(tmp2, gene_i == CG)
-          
-          ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
-          ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis = paste0("vs", CG), type = "greater"))
-          
-          ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
-          ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis = paste0("vs", CG), type = "less"))
-        }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-      }
-    }
-    
-    # control together
-    tmp_CTR = filter(tmp2, gene_i %in% control_genes_i)
-    ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
-    ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
-    
-    ks_stat = rbind(ks_stat, 
-                    data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlgenes_i", type="greater"),
-                    data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlgenes_i", type="less"))
-    
-  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-}
-
-# loop for gene_i
-for (c in unique(pt$gene_i)) {
-  tryCatch({
-    print(c)
-    tmp_TET = filter(tmp2, gene_i == c)
-    
-    # control together
-    tmp_CTR = filter(tmp2, gene_i %in% control_genes_i)
-    ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
-    ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
-    
-    ks_stat = rbind(ks_stat, 
-                    data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlgenes_i", type="greater"),
-                    data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlgenes_i", type="less"))
-    
-  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-}
-
-ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
-ks_stat$sig <- ks_stat$padj <= 0.05
-
-ks_stat_fil = ks_stat %>%
-  group_by(gene, analysis) %>%
-  filter(padj == min(padj)) %>%
-  ungroup() %>% 
-  distinct()
-
-write.csv(ks_stat, file= paste0(dir, "/genes_i_ks_statistics_vscontrol_genes_all",all, "_", analysis, ".csv"), row.names=FALSE)
-
-p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
-  geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
-  ggrepel::geom_text_repel(
-    data=ks_stat_fil,
-    aes(label = gene),
-    size = 4,
-    max.overlaps=10
-  ) +
-  geom_hline(yintercept = log10(0.05)*-1, linetype="dotted", color="red") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle("KS test statistics  genes_i") +
-  theme_minimal() +
-  labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
-  scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
-
-ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_i_all",all, "_", analysis, ".pdf"),
-       width = 14, height = 8)
+# ###############################################
+# # --- KS-TEST and VOLCANO for guide_comb (CIRI only) ---
+# ###############################################
+# print(paste0("custom CIRI volcano vs", control_comb))
+# 
+# ks_df = data.frame()
+# 
+# for (gc in unique(pt_CIRI$guide_comb)) {
+#   tmp_case = filter(pt_CIRI, guide_comb == gc)
+#   
+#   if (nrow(tmp_case) < 2 || length(unique(tmp_case$pseudotime)) <= 1)
+#     next
+#   
+#   tmp_ctrl = filter(pt_CIRI, guide_comb %in% control_comb)
+#   
+#   if (nrow(tmp_ctrl) < 2 || length(unique(tmp_ctrl$pseudotime)) <= 1)
+#     next
+#   
+#   ks_g = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "greater")
+#   ks_l = ks.test(tmp_case$pseudotime, tmp_ctrl$pseudotime, alternative = "less")
+#   
+#   ks_df = rbind(
+#     ks_df,
+#     data.frame(
+#       guide_comb = gc,
+#       pval = ks_g$p.value,
+#       stat = -ks_g$statistic[["D^+"]],
+#       direction = "greater"
+#     ),
+#     data.frame(
+#       guide_comb = gc,
+#       pval = ks_l$p.value,
+#       stat = ks_l$statistic[["D^-"]],
+#       direction = "less"
+#     )
+#   )
+# }
+# 
+# if (nrow(ks_df) > 0) {
+#   ks_df$padj = p.adjust(ks_df$pval, method = "BH")
+#   ks_df$neglog = -log10(ks_df$padj)
+#   ks_df$sig = ks_df$padj <= 0.05
+#   
+#   write.csv(
+#     ks_df,
+#     paste0(dir, "/CIRI_guide_comb_ks_statistics.csv"),
+#     row.names = FALSE
+#   )
+#   
+#   library(ggrepel)
+#   
+#   p_volc = ggplot(ks_df, aes(x = stat, y = neglog)) +
+#     geom_point(aes(colour = direction), alpha = 0.5, size = 2) +
+#     geom_text_repel(aes(label = guide_comb), size = 3, max.overlaps = 20) +
+#     geom_hline(yintercept = -log10(0.05), linetype = "dotted", color = "red") +
+#     geom_vline(xintercept = 0, linetype = "dotted") +
+#     theme_minimal(base_size = 14) +
+#     labs(
+#       title = "KS volcano plot for guide_comb (CIRI)",
+#       x = "KS statistic",
+#       y = "-log10 adj p-value"
+#     ) +
+#     scale_color_viridis_d()
+#   
+#   ggsave(
+#     filename = paste0(dir, "/CIRI_volcano_guide_comb.pdf"),
+#     plot = p_volc,
+#     width = 12, height = 7
+#   )
+# }
+# 
+# 
+# # --- KS TEST based on control genes_a and genes_i ---
+# ks_stat = data.frame()
+# tmp2 = pt
+# 
+# # loop for gene_a
+# for (c in unique(pt$gene_a)) {
+#   tryCatch({
+#     print(c)
+#     tmp_TET = filter(tmp2, gene_a == c)
+#     
+#     if (all == T) {
+#       for (CG in control_genes_a) {
+#         tryCatch({
+#           print(CG)
+#           tmp_CTR = filter(tmp2, gene_a == CG)
+#           
+#           ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
+#           ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis = paste0("vs", CG), type = "greater"))
+#           
+#           ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
+#           ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis = paste0("vs", CG), type = "less"))
+#         }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+#       }
+#     }
+#     
+#     # control together
+#     tmp_CTR = filter(tmp2, gene_a %in% control_genes_a)
+#     ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
+#     ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
+#     
+#     ks_stat = rbind(ks_stat, 
+#                     data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlGenes_a", type="greater"),
+#                     data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlGenes_a", type="less"))
+#     
+#   }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+# }
+# 
+# ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+# ks_stat$sig <- ks_stat$padj <= 0.05
+# 
+# ks_stat_fil = ks_stat %>%
+#   group_by(gene, analysis) %>%
+#   filter(padj == min(padj)) %>%
+#   ungroup() %>% 
+#   distinct()
+# 
+# write.csv(ks_stat, file= paste0(dir, "/genes_a_ks_statistics_vscontrol_genes_all",all, "_", analysis, ".csv"), row.names=FALSE)
+# 
+# p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
+#   geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
+#   ggrepel::geom_text_repel(
+#     data=ks_stat_fil,
+#     aes(label = gene),
+#     size = 4,
+#     max.overlaps=10
+#   ) +
+#   geom_hline(yintercept = log10(0.05)*-1, linetype="dotted", color="red") +
+#   geom_vline(xintercept = 0, linetype="dotted") +
+#   ggtitle("KS test statistics  genes_a") +
+#   theme_minimal() +
+#   labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
+#   scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
+# 
+# ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_a_all",all, "_", analysis, ".pdf"),
+#        width = 14, height = 8)
+# 
+# 
+# 
+# # loop for gene_i
+# ks_stat = data.frame()
+# tmp2 = pt
+# for (c in unique(pt$gene_i)) {
+#   tryCatch({
+#     print(c)
+#     tmp_TET = filter(tmp2, gene_i == c)
+#     
+#     if (all == T) {
+#       for (CG in control_genes_i) {
+#         tryCatch({
+#           print(CG)
+#           tmp_CTR = filter(tmp2, gene_i == CG)
+#           
+#           ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
+#           ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis = paste0("vs", CG), type = "greater"))
+#           
+#           ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
+#           ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis = paste0("vs", CG), type = "less"))
+#         }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+#       }
+#     }
+#     
+#     # control together
+#     tmp_CTR = filter(tmp2, gene_i %in% control_genes_i)
+#     ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
+#     ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
+#     
+#     ks_stat = rbind(ks_stat, 
+#                     data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlgenes_i", type="greater"),
+#                     data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlgenes_i", type="less"))
+#     
+#   }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+# }
+# 
+# # loop for gene_i
+# for (c in unique(pt$gene_i)) {
+#   tryCatch({
+#     print(c)
+#     tmp_TET = filter(tmp2, gene_i == c)
+#     
+#     # control together
+#     tmp_CTR = filter(tmp2, gene_i %in% control_genes_i)
+#     ks_g = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="greater")
+#     ks_l = ks.test(tmp_TET$pseudotime, tmp_CTR$pseudotime, alternative="less")
+#     
+#     ks_stat = rbind(ks_stat, 
+#                     data.frame(gene = c, pval = ks_g$p.value, statistic = -ks_g$statistic[["D^+"]], analysis="vsControlgenes_i", type="greater"),
+#                     data.frame(gene = c, pval = ks_l$p.value, statistic = ks_l$statistic[["D^-"]], analysis="vsControlgenes_i", type="less"))
+#     
+#   }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+# }
+# 
+# ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+# ks_stat$sig <- ks_stat$padj <= 0.05
+# 
+# ks_stat_fil = ks_stat %>%
+#   group_by(gene, analysis) %>%
+#   filter(padj == min(padj)) %>%
+#   ungroup() %>% 
+#   distinct()
+# 
+# write.csv(ks_stat, file= paste0(dir, "/genes_i_ks_statistics_vscontrol_genes_all",all, "_", analysis, ".csv"), row.names=FALSE)
+# 
+# p = ggplot(data=ks_stat_fil, aes(x=statistic, y=log10(padj)*-1)) +
+#   geom_point(aes(colour = analysis), size=2, alpha = 0.3) +
+#   ggrepel::geom_text_repel(
+#     data=ks_stat_fil,
+#     aes(label = gene),
+#     size = 4,
+#     max.overlaps=10
+#   ) +
+#   geom_hline(yintercept = log10(0.05)*-1, linetype="dotted", color="red") +
+#   geom_vline(xintercept = 0, linetype="dotted") +
+#   ggtitle("KS test statistics  genes_i") +
+#   theme_minimal() +
+#   labs(x = "KS statistic summary", y = "-Log10 adj p-value") +
+#   scale_color_manual(values = viridis::turbo(length(unique(ks_stat_fil$analysis))))
+# 
+# ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_i_all",all, "_", analysis, ".pdf"),
+#        width = 14, height = 8)
 
 
 
@@ -754,22 +773,25 @@ ggsave(p, filename = paste0(dir, "/volcano_ks_stats_vs_control_genes_i_all",all,
 
 
 #gene and pseudotime correlation
-cds <- cds[
-  ,
-  colData(cds) %>%
-    row.names
-]
-pr_graph_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=1)
-pr_graph_test_res = pr_graph_test_res[order(pr_graph_test_res$morans_I, decreasing = T), ]
-write.csv(pr_graph_test_res, file= paste0(dir,"regression_pseudotime.csv"))
-pr_deg_ids <- row.names(subset(pr_graph_test_res, q_value < 0.05))
+if (correlation == T) {
+  cds <- cds[
+    ,
+    colData(cds) %>%
+      row.names
+  ]
+  pr_graph_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=1)
+  pr_graph_test_res = pr_graph_test_res[order(pr_graph_test_res$morans_I, decreasing = T), ]
+  write.csv(pr_graph_test_res, file= paste0(dir,"regression_pseudotime", analysis, ".csv"))
+  pr_deg_ids <- row.names(subset(pr_graph_test_res, q_value < 0.05))
+  
+  p = plot_cells(cds, genes=pr_deg_ids[1:30],
+                 show_trajectory_graph=FALSE,
+                 label_cell_groups=FALSE,
+                 label_leaves=FALSE)
+  ggsave(p, filename = paste0(dir, "/correlated_pseudotime_gene_exp", analysis, ".pdf"),
+         width = 14, height = 14) 
+}
 
-p = plot_cells(cds, genes=pr_deg_ids[1:30],
-               show_trajectory_graph=FALSE,
-               label_cell_groups=FALSE,
-               label_leaves=FALSE)
-ggsave(p, filename = paste0(dir, "/correlated_pseudotime_gene_exp", analysis, ".pdf"),
-       width = 14, height = 14) 
 
 
 ###############################################
@@ -777,7 +799,7 @@ ggsave(p, filename = paste0(dir, "/correlated_pseudotime_gene_exp", analysis, ".
 ###############################################
 
 # Define the specific control target
-control_target_comb = "NTCa_1A;NTCa_1B-NA;NA"
+#control_target_comb = "NTCa_1A;NTCa_1B-NA;NA"
 
 # 1. Extract control cells from the GLOBAL pt object 
 # (We use 'pt' instead of 'pt_CIRI' to ensure we capture the NTCa-NA cells 
@@ -859,7 +881,7 @@ if (nrow(tmp_ctrl_ntca) < 5) {
       ) +
       scale_color_viridis_d()
     
-    out_pdf_ntca = paste0(dir, "/CIRI_volcano_guide_comb_vs_", control_target_comb, ".pdf")
+    out_pdf_ntca = paste0(dir, "/CIRI_volcano_guide_comb_vs_", control_target_comb,"_", analysis, ".pdf")
     ggsave(filename = out_pdf_ntca, plot = p_volc_ntca, width = 12, height = 7)
     message("Saved Plot: ", out_pdf_ntca)
   } else {

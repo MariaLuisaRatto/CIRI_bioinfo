@@ -19,14 +19,20 @@ if (length(args) == 0) {
 
 
 dir <- args[1]
+print(dir)
 file = args[2]
+print(file)
 #file = "annotated_matrix.csv"
 res = as.numeric(args[3])
+print(res)
 #res = 0.5e-4
 #for 1 guide
-#res = 0.01e-4
+#res = 1e-5
 #for 2 guides
 #exp$X = rownames(exp)
+
+#example command
+#Rscript ../CIRI_load.R /analysis/data/ annotated_matrix.csv 1e10-5
 
 #LOAD ANNOTATED GENE EXP
 #exp = read.csv("/30tb/3tb/data/ratto/testing/annotated_silencing_matrix_complete_all_samples.csv", header = T)
@@ -59,7 +65,8 @@ rownames(data)=data$nomi
 #CAATTCTGTAATTCAG-2-NA-CTCF_2A;CTCF_2B
 num_pieces <- length(strsplit(data$nomi, "-")[[1]])
 #if(num_pieces <= 4){
-  data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "-", remove = F, convert = T)
+  data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "\\.", remove = F, convert = T)
+  print(head(data))
   data = mutate(data, comb = paste(guide_a, guide_i, sep = "-"))
   data <- data %>%
     mutate(gene_a = sapply(strsplit(guide_a, "_"), `[`, 1))
@@ -98,6 +105,8 @@ data <- data %>%
       TRUE ~ NA_character_
     )
   )
+
+print(head(data))
 
 #update names
 data = mutate(data, nomi = paste(nomi, gene_a, gene_i, gene_comb, type, sep = "."))
