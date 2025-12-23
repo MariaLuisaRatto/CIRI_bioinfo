@@ -20,13 +20,13 @@ print(paste("All:", all))
 #control_comb = args[6]
 control_target_comb = args[6]
 #control_comb = c("NTCa-NTCi")
-min_cells_CIRI = args[7]
+min_cells_CIRI = as.numeric(args[7])
 
 #Run gene - pseudotime correlation analysis? 
 correlation = F
 
 ##example command 
-#Rscript ../CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv musce_1 TRUE NTCa_1A;NTCa_1B-NA;NA 8
+#Rscript ../CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv musce_1 TRUE "NTCa_1A;NTCa_1B-NA;NA" 8
 
 print("Starting...")
 
@@ -66,7 +66,7 @@ num_pieces <- length(strsplit(pt$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
 
 #if(num_pieces == 8){
-  pt <- separate(pt, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+  pt <- separate(pt, nomi, into = c("cellID","sample","guide_a","guide_i", "comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
 # } else if(num_pieces == 10){
 #   pt <- separate(
 #     pt,
@@ -338,10 +338,15 @@ message("Remaining guide_comb in CIRI after filtering: ",
 # --- CUMULATIVE FREQUENCY PER SAMPLE (guide_comb) ---
 ###############################################
 if (length(unique(pt_CIRI$guide_comb)) > 0) {
-  samples = unique(pt$sample)
+  samples <- unique(pt_CIRI$sample)
   
   for (s in samples) {
-    tmp = filter(pt_CIRI, sample == s)
+    tmp <- pt_CIRI %>%
+      filter(sample == s) %>%
+      filter(is.finite(pseudotime))
+    
+    tmp <- droplevels(tmp)
+    print(table(tmp$guide_a, tmp$guide_i))
     
     p = ggplot(tmp, aes(pseudotime, colour = guide_i)) +
       stat_ecdf(geom = "step") +
@@ -349,7 +354,7 @@ if (length(unique(pt_CIRI$guide_comb)) > 0) {
       ylab("Cumulative frequency") +
       xlab("monocle pseudotime") +
       ggtitle(paste("Cumulative frequency on", analysis, "sample", s)) +
-      facet_grid(vars(guide_a))+
+      facet_grid(vars(guide_a), drop = TRUE)+
       scale_color_manual(values = viridis::turbo(length(unique(tmp$guide_i)))) 
     
     ggsave(

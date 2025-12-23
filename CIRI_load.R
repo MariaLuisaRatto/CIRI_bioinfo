@@ -36,9 +36,9 @@ print(res)
 
 #LOAD ANNOTATED GENE EXP
 #exp = read.csv("/30tb/3tb/data/ratto/testing/annotated_silencing_matrix_complete_all_samples.csv", header = T)
-exp = read.csv(paste0(dir,"/", file), header = T)
-rownames(exp) = exp$X
-exp$X = NULL
+exp = read.csv(paste0(dir,"/", file), header = T, check.names = FALSE)
+rownames(exp) = exp[,1]
+exp[,1] = NULL
 #exp$X = rownames(exp)
 # exp = exp[, colSums(exp != 0) > 0]
 # exp <- separate(
@@ -65,14 +65,21 @@ rownames(data)=data$nomi
 #CAATTCTGTAATTCAG-2-NA-CTCF_2A;CTCF_2B
 num_pieces <- length(strsplit(data$nomi, "-")[[1]])
 #if(num_pieces <= 4){
-  data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "\\.", remove = F, convert = T)
+  data = separate(data, nomi, into = c("cellID","sample", "guide_a", "guide_i"), sep = "-", remove = F, convert = F)
   print(head(data))
+  data <- data %>%
+    mutate(
+      guide_a = ifelse(guide_a %in% c("NA", "NA;NA"), NA_character_, guide_a),
+      guide_i = ifelse(guide_i %in% c("NA", "NA;NA"), NA_character_, guide_i)
+    )
   data = mutate(data, comb = paste(guide_a, guide_i, sep = "-"))
   data <- data %>%
     mutate(gene_a = sapply(strsplit(guide_a, "_"), `[`, 1))
   data <- data %>%
     mutate(gene_i = sapply(strsplit(guide_i, "_"), `[`, 1))
   data = mutate(data, gene_comb = paste(gene_a, gene_i, sep = "-"))
+  
+  
 #} else if(num_pieces  > 4){
   # Split into max 6 parts; if fewer, fill with NA instead of shifting
  # data <- separate(
@@ -109,7 +116,7 @@ data <- data %>%
 print(head(data))
 
 #update names
-data = mutate(data, nomi = paste(nomi, gene_a, gene_i, gene_comb, type, sep = "."))
+data = mutate(data, nomi = paste(cellID, sample, guide_a, guide_i, comb, gene_a, gene_i, gene_comb, type, sep = "."))
 rownames(data) = data$nomi
 
 #ORDER IN SAME WAY MATRIX AND ANNOTATION 
@@ -148,12 +155,12 @@ cds <- reduce_dimension(cds, reduction_method="UMAP", umap.fast_sgd = FALSE,core
 UMAP = as.data.frame(reducedDims(cds)$UMAP)
 names(UMAP) = c("x", "y")
 UMAP$nomi = rownames(UMAP)
-num_pieces = length(strsplit(UMAP$nomi, "\\.")[[1]]) 
-if (num_pieces < 10) {
-  UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a", "guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
-} else if (num_pieces == 10) {
-  UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a1","guide_a2", "guide_i1","guide_i2", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
-}
+num_pieces = length(strsplit(UMAP$nomi, "-")[[1]]) 
+#if (num_pieces < 10) {
+  UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a", "guide_i", "comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = F)
+#} else if (num_pieces == 10) {
+  #UMAP = separate(UMAP, nomi,into = c("cellID","sample", "guide_a1","guide_a2", "guide_i1","guide_i2", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = F, convert = T)
+#}
 
 UMAP$sample = as.factor(UMAP$sample)
 p = ggplot(UMAP, aes(x, y, color = sample, alpha = 0.1)) +

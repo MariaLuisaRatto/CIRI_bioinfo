@@ -88,7 +88,7 @@ num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
 
 #if(num_pieces < 10){
-  UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+  UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i","comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
 # } else if(num_pieces == 10){
 #   # Split into max 6 parts; if fewer, fill with NA instead of shifting
 #   UMAP_sub <- separate(
@@ -114,6 +114,7 @@ num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
 
 
 UMAP_sub$sample <- as.factor(UMAP_sub$sample)
+print(head(UMAP_sub))
 
 print("UMAPs...")
 # ---- Base UMAP plots ----
