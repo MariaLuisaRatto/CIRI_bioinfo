@@ -11,7 +11,7 @@ print(paste("File:", file))
 #pseudotime = "signature_values_csv/sarcomere_core.csv"
 pseudotime = args[3]
 print(paste("Pseudotime file:", pseudotime))
-#analysis = "pseudotime_sample_1"
+#analysis = "muscle_1"
 analysis = args[4]
 all = as.logical(args[5])
 #all = T
@@ -19,14 +19,15 @@ all = as.logical(args[5])
 print(paste("All:", all))
 #control_comb = args[6]
 control_target_comb = args[6]
+#control_target_comb = "NTCa_1A;NTCa_1B-NA"
 #control_comb = c("NTCa-NTCi")
 min_cells_CIRI = as.numeric(args[7])
-
+#min_cells_CIRI = 8
 #Run gene - pseudotime correlation analysis? 
 correlation = F
 
 ##example command 
-#Rscript ../CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv musce_1 TRUE "NTCa_1A;NTCa_1B-NA;NA" 8
+#Rscript ../CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv musce_1 TRUE "NTCa_1A;NTCa_1B-NA" 8
 
 print("Starting...")
 
@@ -56,7 +57,6 @@ load(paste0(dir, "/", file), envir = temp_env)
 # Grab the first object in that environment and assign it to 'cds'
 cds <- temp_env[[ls(temp_env)[1]]]
 pt = read.csv(paste0(dir, "/", pseudotime), row.names = 1)
-analysis = names(pt)
 names(pt) = c("pseudotime")
 
 #CUMOLATIVE FREQ
@@ -83,6 +83,7 @@ num_pieces <- length(strsplit(pt$nomi, "\\.")[[1]])
 # }
 
 pt$sample = as.factor(pt$sample)
+pt = filter(pt, is.finite(pseudotime))
 
 
 # gene_a
@@ -152,14 +153,40 @@ if (length(unique(pt$guide_i)) < 21) {
 
 # --- KS TEST based on control samples ---
 print("KS TESTS")
-control_genes_a = c("NTCa", "NA")
-control_genes_i = c("NTCi", "NA")
+control_genes_a = c("NTCa", "NA", "NTCa_1A;NTCa_1B")
+control_genes_i = c("NTCi", "NA", "NTCi_1A;NTCi_1B")
 control_guides_a = control_genes_a
 control_guides_i = control_genes_i
 pt$gene_a[is.na(pt$gene_a)] <- "NA"
 pt$gene_i[is.na(pt$gene_i)] <- "NA"
 pt$guide_a[is.na(pt$guide_a)] <- "NA"
 pt$guide_i[is.na(pt$guide_i)] <- "NA"
+
+cat("Activation controls\n")
+pt %>%
+  filter(guide_a %in% control_guides_a) %>%
+  dplyr::count(guide_a) %>%
+  arrange(desc(n)) %>%
+  print()
+
+pt %>%
+  filter(gene_a %in% control_genes_a) %>%
+  dplyr::count(gene_a) %>%
+  arrange(desc(n)) %>%
+  print()
+
+cat("\nInterference controls\n")
+pt %>%
+  filter(guide_i %in% control_guides_i) %>%
+  dplyr::count(guide_i) %>%
+  arrange(desc(n)) %>%
+  print()
+
+pt %>%
+  filter(gene_i %in% control_genes_i) %>%
+  dplyr::count(gene_i) %>%
+  arrange(desc(n)) %>%
+  print()
 
 
 run_ks_test <- function(data, type, target, control_genes, dir, all, t_label) {
@@ -804,7 +831,7 @@ if (correlation == T) {
 ###############################################
 
 # Define the specific control target
-#control_target_comb = "NTCa_1A;NTCa_1B-NA;NA"
+#control_target_comb = "NTCa_1A;NTCa_1B-NA"
 
 # 1. Extract control cells from the GLOBAL pt object 
 # (We use 'pt' instead of 'pt_CIRI' to ensure we capture the NTCa-NA cells 
@@ -815,7 +842,7 @@ message("\n--- Starting analysis: CIRI vs ", control_target_comb, " ---")
 message("Number of control cells found (", control_target_comb, "): ", nrow(tmp_ctrl_ntca))
 
 # Check if control exists
-if (nrow(tmp_ctrl_ntca) < 5) {
+if (nrow(tmp_ctrl_ntca) < min_cells_CIRI) {
   warning("WARNING: Not enough control cells found for ", control_target_comb, ". Skipping this comparison.")
 } else {
   
@@ -827,11 +854,13 @@ if (nrow(tmp_ctrl_ntca) < 5) {
     
     # Skip if the current group IS the control (sanity check)
     if (gc == control_target_comb) next
+    print(gc)
     
     tmp_case = filter(pt_CIRI, guide_comb == gc)
+    print(tmp_case)
     
     # Quality check: ensure enough cells and variance
-    if (nrow(tmp_case) < 2 || length(unique(tmp_case$pseudotime)) <= 1) next
+    if (nrow(tmp_case) < min_cells_CIRI || length(unique(tmp_case$pseudotime)) <= 1) next
     
     # Run KS Test (Greater)
     ks_g = ks.test(tmp_case$pseudotime, tmp_ctrl_ntca$pseudotime, alternative = "greater")
@@ -856,6 +885,7 @@ if (nrow(tmp_ctrl_ntca) < 5) {
     )
   }
   
+  print(ks_df_vs_ntca)
   # 3. Save and Plot
   if (nrow(ks_df_vs_ntca) > 0) {
     # Adjust p-values
@@ -864,7 +894,7 @@ if (nrow(tmp_ctrl_ntca) < 5) {
     ks_df_vs_ntca$sig = ks_df_vs_ntca$padj <= 0.05
     
     # Output CSV
-    out_csv_ntca = paste0(dir, "/CIRI_guide_comb_vs_", control_target_comb, "_ks_statistics.csv")
+    out_csv_ntca = paste0(dir, "/CIRI_guide_comb_vs_", control_target_comb,"_", analysis, "_ks_statistics.csv")
     write.csv(ks_df_vs_ntca, out_csv_ntca, row.names = FALSE)
     message("Saved CSV: ", out_csv_ntca)
     

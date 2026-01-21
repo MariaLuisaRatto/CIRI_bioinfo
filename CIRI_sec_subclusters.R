@@ -303,13 +303,6 @@ get_root_lowest_TTN <- function(cds, gene) {
     return(root_pr_node)
 }
 
-cds_sub <- order_cells(
-  cds_sub,
-  root_pr_nodes = get_root_lowest_TTN(cds_sub, gene = g)
-)
-# Save dataas an RData file
-save(cds_sub, file = paste0(dir, "/processed_cds_", group_name, ".RData"))
-
 #pseudotime for each sample 
 samples <- unique(colData(cds_sub)$sample)
 for (s in samples) {
@@ -319,6 +312,14 @@ for (s in samples) {
   ## ---- subset CDS ----
   cds_sample <- cds_sub[, colData(cds_sub)$sample %in% s]
   group_name_s <- paste0(group_name, "_", s)
+  
+  cds_sample <- order_cells(
+    cds_sample,
+    root_pr_nodes = get_root_lowest_TTN(cds_sample, gene = g)
+  )
+  # Save dataas an RData file
+  save(cds_sub, file = paste0(dir, "/processed_cds_", group_name, "_", sample, ".RData"))
+  
   
   save(cds_sample, file = paste0(dir, "/cds_sample_", s, "_ordered.RData"))
   
