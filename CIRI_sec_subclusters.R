@@ -34,7 +34,7 @@ group_name = args[4]
 #group_name = "muscle"
 #res = 1e-3
 res = as.numeric(args[5])
-#res = 1e-4
+#res = 5e-4
 #example command 
 #Rscript ../CIRI_sec_subclusters.R /analysis/data/ 3 SOX2 muscle 1e-4
   
@@ -88,7 +88,7 @@ num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
 #AAACCAACAGGATTAA_30_AACCGGAG_SMAD2_TCTATT_1_SMAD2.2_78__0___singleSample
 
 #if(num_pieces < 10){
-  UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i","comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+  UMAP_sub <- separate(UMAP_sub, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
 # } else if(num_pieces == 10){
 #   # Split into max 6 parts; if fewer, fill with NA instead of shifting
 #   UMAP_sub <- separate(
@@ -114,6 +114,7 @@ num_pieces <- length(strsplit(UMAP_sub$nomi, "\\.")[[1]])
 
 
 UMAP_sub$sample <- as.factor(UMAP_sub$sample)
+UMAP_sub = mutate(UMAP_sub, comb = paste0(guide_a, "-", guide_i))
 print(head(UMAP_sub))
 
 print("UMAPs...")
@@ -270,59 +271,151 @@ ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name, ".pdf"),
 # ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_CRISPR_", group_name, ".pdf"),
 #        width = 10, height = 10)
 
-## ---- PSEUDOTIME ----
-print("Running pseudotime...")
+## ---- PSEUDOTIME (GLOBAL) ----
+print("Running global pseudotime...")
 cds_sub <- learn_graph(cds_sub)
 
 # Helper function to identify the root principal node with the lowest TTN expression
 get_root_lowest_TTN <- function(cds, gene) {
-    
-    # sanity check
-    if (!gene %in% rownames(cds)) {
-      stop(paste("Gene", gene, "not found in CDS"))
-    }
-    
-    gene_expr <- as.numeric(exprs(cds)[gene, ])
-    names(gene_expr) <- colnames(cds)  # ensure names exist
-    
-    if (all(is.na(gene_expr))) stop("Gene expression is all NA")
-    
-    max_val <- max(gene_expr, na.rm = TRUE)
-    min_cells <- names(gene_expr[gene_expr == max_val])
-    
-    if (length(min_cells) == 0) stop("No cells found with max expression")
-    
-    # Find the principal graph projection (which vertex each cell maps to)
-    closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
-    vertices <- closest_vertex[min_cells, , drop = FALSE]
-    
-    # Find the most common vertex among these cells
-    root_pr_node <- names(which.max(table(vertices)))
-    root_pr_node = paste0("Y_", root_pr_node)
-    print(root_pr_node)
-    return(root_pr_node)
+  
+  # sanity check
+  if (!gene %in% rownames(cds)) {
+    stop(paste("Gene", gene, "not found in CDS"))
+  }
+  
+  gene_expr <- as.numeric(exprs(cds)[gene, ])
+  names(gene_expr) <- colnames(cds)  # ensure names exist
+  
+  if (all(is.na(gene_expr))) stop("Gene expression is all NA")
+  
+  max_val <- max(gene_expr, na.rm = TRUE)
+  min_cells <- names(gene_expr[gene_expr == max_val])
+  
+  if (length(min_cells) == 0) stop("No cells found with max expression")
+  
+  # Find the principal graph projection (which vertex each cell maps to)
+  closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  vertices <- closest_vertex[min_cells, , drop = FALSE]
+  
+  # Find the most common vertex among these cells
+  root_pr_node <- names(which.max(table(vertices)))
+  root_pr_node = paste0("Y_", root_pr_node)
+  print(paste("Root node found:", root_pr_node))
+  return(root_pr_node)
 }
 
-#pseudotime for each sample 
+# ---- Order cells for ALL samples together ----
+message("Ordering cells for global dataset...")
+cds_sub <- order_cells(
+  cds_sub,
+  root_pr_nodes = get_root_lowest_TTN(cds_sub, gene = g)
+)
+
+# Save global pseudotime data
+pt_global <- as.data.frame(pseudotime(cds_sub))
+colnames(pt_global) <- "pseudotime"
+write.csv(pt_global, file = paste0(dir, "/pseudotime_", group_name, "_GLOBAL.csv"))
+
+# Plot global pseudotime
+p_global_pt <- plot_cells(
+  cds_sub,
+  color_cells_by = "pseudotime",
+  label_cell_groups = FALSE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE,
+  graph_label_size = 1.5
+) +
+  ggtitle(paste("Pseudotime - Global", group_name))
+
+ggsave(
+  p_global_pt,
+  filename = paste0(dir, "/UMAP_", group_name, "_pseudotime_GLOBAL.pdf"),
+  width = 5,
+  height = 4
+)
+
+
+## ---- PSEUDOTIME (PER SAMPLE) ----
+# Process each sample independently with new dimensionality reduction
 samples <- unique(colData(cds_sub)$sample)
+
 for (s in samples) {
   
-  message(paste("Processing sample:", s))
-  
-  ## ---- subset CDS ----
-  cds_sample <- cds_sub[, colData(cds_sub)$sample %in% s]
+  message(paste("Processing independent trajectory for sample:", s))
   group_name_s <- paste0(group_name, "_", s)
   
+  # 1. Subset CDS
+  cds_sample <- cds_sub[, colData(cds_sub)$sample == s]
+  
+  # 2. New Dimensionality Reduction for this sample
+  cds_sample <- preprocess_cds(cds_sample, num_dim = 50)
+  cds_sample <- reduce_dimension(cds_sample, reduction_method = "UMAP")
+  cds_sample <- cluster_cells(cds_sample, resolution = res, random_seed = 42) 
+  
+  # Store clusters in the specific column expected by your snippet
+  colData(cds_sample)$clusters_sub <- clusters(cds_sample)
+  
+  cds_sample <- learn_graph(cds_sample)
+  
+  # ---- PLOT SUBCLUSTERS ON UMAP (Sample Specific) ----
+  p_sub_umap <- plot_cells(
+    cds_sample,
+    color_cells_by = "clusters_sub",
+    show_trajectory_graph = FALSE,
+    label_cell_groups = TRUE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE
+  ) +
+    labs(title = paste("Subclusters - Sample", s), caption = paste("res =", res))
+  
+  ggsave(p_sub_umap, filename = paste0(dir, "/UMAP_", group_name_s, "_subclusters.pdf"),
+         width = 5, height = 4)
+  
+  # 3. Order cells using local root
   cds_sample <- order_cells(
     cds_sample,
     root_pr_nodes = get_root_lowest_TTN(cds_sample, gene = g)
   )
-  # Save dataas an RData file
-  save(cds_sub, file = paste0(dir, "/processed_cds_", group_name, "_", sample, ".RData"))
   
+  # 4. Save Sample Data
+  save(cds_sample, file = paste0(dir, "/cds_sample_", s, "_reprocessed_ordered.RData"))
   
-  save(cds_sample, file = paste0(dir, "/cds_sample_", s, "_ordered.RData"))
+  # ---- PLOT GENE EXPRESSION (Adapted for cds_sample) ----
+  print(paste("Plotting gene expression for sample", s, "..."))
+  genes = "genes_of_interest.txt"
+  glist <- readLines(paste0(dir, "/", genes))
+  glist <- trimws(glist)
+  glist <- glist[glist != ""]
+  glist <- unique(glist)
   
+  # Fix gene names in cds_sample to solve bug
+  old_names <- rownames(cds_sample)
+  new_names <- make.unique(old_names)
+  
+  rownames(cds_sample) <- new_names
+  rowData(cds_sample)$gene_short_name <- new_names
+  
+  valid_genes <- intersect(
+    glist,
+    rowData(cds_sample)$gene_short_name
+  )
+  
+  # Ensure clusters_sub is a factor (from your snippet)
+  colData(cds_sample)$clusters_sub <- factor(
+    as.character(colData(cds_sample)$clusters_sub)
+  )
+  
+  p = plot_cells(cds_sample,
+                 genes = valid_genes,
+                 label_cell_groups = TRUE,
+                 show_trajectory_graph = FALSE) +
+    labs(x = "UMAP 1", y = "UMAP 2", title = paste("Expression - Sample", s))
+  
+  ggsave(p, filename = paste0(dir,"/UMAP_gene_expression_", group_name_s, ".pdf"),
+         width = 10, height = 10)
+  # ------------------------------------------------------------------
+  
+  # 5. Pseudotime output
   pt <- as.data.frame(pseudotime(cds_sample))
   colnames(pt) <- "pseudotime"
   write.csv(
@@ -338,7 +431,7 @@ for (s in samples) {
     label_branch_points = FALSE,
     graph_label_size = 1.5
   ) +
-    ggtitle(paste("Pseudotime - sample", s))
+    ggtitle(paste("Pseudotime - sample", s, "(Independent Analysis)"))
   
   ggsave(
     p_sub,
@@ -347,7 +440,7 @@ for (s in samples) {
     height = 4
   )
   
-  ## ---- ENRICHMENT / DEPLETION ----
+  ## ---- ENRICHMENT / DEPLETION (Sample specific) ----
   df_sub <- as.data.frame(colData(cds_sample))
   
   ## ---- Gene A ----
@@ -370,11 +463,9 @@ for (s in samples) {
     geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
     geom_text(
       aes(y = 100, label = total),
-      #inherit.aes = FALSE,
       size = 3,
       angle = 90
     ) +
-    #facet_grid(~gene_a) +
     labs(
       title = paste("Subclusters within gene_a - sample", s),
       x = "gene_a",
@@ -419,11 +510,9 @@ for (s in samples) {
     geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
     geom_text(
       aes(y = 100, label = total),
-      #inherit.aes = FALSE,
       size = 3,
       angle = 90
     ) +
-    #facet_grid(~guide_a) +
     labs(
       title = paste("Subclusters within guide_a - sample", s),
       x = "guide_a",
@@ -469,11 +558,9 @@ for (s in samples) {
     geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
     geom_text(
       aes(y = 100, label = total),
-      #inherit.aes = FALSE,
       size = 3,
       angle = 90
     ) +
-    #facet_grid(~gene_i) +
     labs(
       title = paste("Subclusters within gene_i - sample", s),
       x = "gene_i",
@@ -518,11 +605,9 @@ for (s in samples) {
     geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
     geom_text(
       aes(y = 100, label = total),
-      #inherit.aes = FALSE,
       size = 3,
       angle = 90
     ) +
-    #facet_grid(~guide_i) +
     labs(
       title = paste("Subclusters within guide_i - sample", s),
       x = "guide_i",
@@ -548,6 +633,206 @@ for (s in samples) {
     height = 5
   )
 }
+
+
+
+## ---- ENRICHMENT / DEPLETION (GLOBAL) ----
+print("Running global enrichment/depletion analysis...")
+
+# Extract metadata from the global object
+df_global <- as.data.frame(colData(cds_sub))
+
+## ---- Gene A (Global) ----
+gene_a_counts <- df_global %>%
+  group_by(gene_a, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+gene_a_percentages <- gene_a_counts %>%
+  group_by(gene_a) %>%
+  mutate(
+    total = sum(count),
+    percentage = count / total * 100
+  ) %>%
+  ungroup()
+
+p_gene_a_global <- ggplot(
+  gene_a_percentages,
+  aes(x = gene_a, y = percentage, fill = clusters_sub)
+) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  geom_text(
+    aes(y = 100, label = total),
+    size = 3,
+    angle = 90
+  ) +
+  labs(
+    title = paste("Subclusters within gene_a - Global", group_name),
+    x = "gene_a",
+    y = "Percentage of cells",
+    fill = "Subcluster"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) +
+  scale_fill_manual(
+    values = lighten(
+      viridis::turbo(length(unique(gene_a_percentages$clusters_sub))),
+      amount = 0.4
+    )
+  )
+
+ggsave(
+  p_gene_a_global,
+  filename = paste0(dir, "/subclusters_gene_a_", group_name, "_GLOBAL.pdf"),
+  width = 10,
+  height = 5
+)
+
+## ---- Guide A (Global) ----
+guide_a_counts <- df_global %>%
+  group_by(guide_a, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+guide_a_percentages <- guide_a_counts %>%
+  group_by(guide_a) %>%
+  mutate(
+    total = sum(count),
+    percentage = count / total * 100
+  ) %>%
+  ungroup()
+
+p_guide_a_global <- ggplot(
+  guide_a_percentages,
+  aes(x = guide_a, y = percentage, fill = clusters_sub)
+) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  geom_text(
+    aes(y = 100, label = total),
+    size = 3,
+    angle = 90
+  ) +
+  labs(
+    title = paste("Subclusters within guide_a - Global", group_name),
+    x = "guide_a",
+    y = "Percentage of cells",
+    fill = "Subcluster"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) +
+  scale_fill_manual(
+    values = lighten(
+      viridis::turbo(length(unique(guide_a_percentages$clusters_sub))),
+      amount = 0.4
+    )
+  )
+
+ggsave(
+  p_guide_a_global,
+  filename = paste0(dir, "/subclusters_guide_a_", group_name, "_GLOBAL.pdf"),
+  width = 10,
+  height = 5
+)
+
+## ---- Gene I (Global) ----
+gene_i_counts <- df_global %>%
+  group_by(gene_i, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+gene_i_percentages <- gene_i_counts %>%
+  group_by(gene_i) %>%
+  mutate(
+    total = sum(count),
+    percentage = count / total * 100
+  ) %>%
+  ungroup()
+
+p_gene_i_global <- ggplot(
+  gene_i_percentages,
+  aes(x = gene_i, y = percentage, fill = clusters_sub)
+) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  geom_text(
+    aes(y = 100, label = total),
+    size = 3,
+    angle = 90
+  ) +
+  labs(
+    title = paste("Subclusters within gene_i - Global", group_name),
+    x = "gene_i",
+    y = "Percentage of cells",
+    fill = "Subcluster"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) +
+  scale_fill_manual(
+    values = lighten(
+      viridis::turbo(length(unique(gene_i_percentages$clusters_sub))),
+      amount = 0.4
+    )
+  )
+
+ggsave(
+  p_gene_i_global,
+  filename = paste0(dir, "/subclusters_gene_i_", group_name, "_GLOBAL.pdf"),
+  width = 10,
+  height = 5
+)
+
+## ---- Guide I (Global) ----
+guide_i_counts <- df_global %>%
+  group_by(guide_i, clusters_sub) %>%
+  summarise(count = n(), .groups = "drop")
+
+guide_i_percentages <- guide_i_counts %>%
+  group_by(guide_i) %>%
+  mutate(
+    total = sum(count),
+    percentage = count / total * 100
+  ) %>%
+  ungroup()
+
+p_guide_i_global <- ggplot(
+  guide_i_percentages,
+  aes(x = guide_i, y = percentage, fill = clusters_sub)
+) +
+  geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+  geom_text(
+    aes(y = 100, label = total),
+    size = 3,
+    angle = 90
+  ) +
+  labs(
+    title = paste("Subclusters within guide_i - Global", group_name),
+    x = "guide_i",
+    y = "Percentage of cells",
+    fill = "Subcluster"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    strip.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) +
+  scale_fill_manual(
+    values = lighten(
+      viridis::turbo(length(unique(guide_i_percentages$clusters_sub))),
+      amount = 0.4
+    )
+  )
+
+ggsave(
+  p_guide_i_global,
+  filename = paste0(dir, "/subclusters_guide_i_", group_name, "_GLOBAL.pdf"),
+  width = 10,
+  height = 5
+)
+
+print("Global enrichment analysis complete.")
 
 
 # 
