@@ -5,35 +5,35 @@ Scripts for the analysis of CIRI experiments
 
 This repository contains an R-based pipeline for processing and analyzing single-cell RNA-seq data from CRISPRa/i screens. It handles perturbation deconvolution, quality control, dimensionality reduction (Monocle3), and trajectory analysis to assess the impact of guides on cell differentiation.
 
-Prerequisites
+## Prerequisites
 The pipeline runs in a Dockerized environment to ensure reproducibility.
 
 Base Image: rocker/r-ver:4.4.2 (Ubuntu 24.04 LTS).
 
 Key Libraries: Monocle3, Seurat, Tidyverse, Bioconductor.
 
-Build Docker Image
+### Build Docker Image
 
-Bash
-docker build -t ciri_pipeline .
-Pipeline Overview
+```docker build -t ciri_pipeline . ```
+
+## Pipeline Overview
 The analysis follows this sequence:
 
-Deconvolution: Assign CRISPR perturbations to cells based on UMI distributions.
+- Deconvolution: Assign CRISPR perturbations to cells based on UMI distributions.
 
-Filtering: Quality control and protein-coding gene selection.
+- Filtering: Quality control and protein-coding gene selection.
 
-Loading: Normalization and initial dimensionality reduction.
+- Loading: Normalization and initial dimensionality reduction.
 
-Validation: Check knockdown/activation efficiency.
+- Validation: Check knockdown/activation efficiency.
 
-Cluster Analysis: Perturbation enrichment in target clusters.
+- Cluster Analysis: Perturbation enrichment in target clusters.
 
-Trajectory Analysis: Pseudotime dynamics and statistical testing.
+- Trajectory Analysis: Pseudotime dynamics and statistical testing.
 
-Signatures: Biological scoring.
+- Signatures: Biological scoring.
 
-Usage
+## Usage
 1. Perturbation Deconvolution
 
 Assigns guide identities based on "fixed" (Cas9 modality) and "variable" (target) guide capture.
@@ -46,11 +46,6 @@ Methodology:
 
 Fixed Guides: Fixed guides are assessed to establish the perturbation type (CRISPRa vs CRISPRi). UMI counts are summarized into histograms (2000 bins for CRISPRa, 6000 for CRISPRi) and smoothed to identify peaks. The threshold is defined as the valley between the noise peak and the signal peak.
 
-
-Thresholds (Single Guide): 22.5 for CRISPRa and 175 for CRISPRi.
-
-Thresholds (Dual Guide): 22.5 for CRISPRa and 155 for CRISPRi.
-
 Variable Guides (Single): Variable guides are assigned if the top guide has ≥10 UMIs and the ratio between the top and second guide is ≥5.
 
 Variable Guides (Dual): The sum of the top two guides must be ≥4 UMIs, and the ratio between this sum and the third guide must be ≥10. Cells are filtered if the two variable guides do not target the same gene.
@@ -58,121 +53,110 @@ Variable Guides (Dual): The sum of the top two guides must be ≥4 UMIs, and the
 
 Command:
 
-Bash
-# Args: <directory>
-Rscript CIRI_explore.R /analysis/data/
+``` Rscript CIRI_explore.R /analysis/data/ ```
+
 2. Annotation & Filtering
 
 Performs quality control on the gene expression matrix.
 
 Filters Applied:
 
-Percentage of ribosomal and mitochondrial genes is calculated.
+- Percentage of ribosomal and mitochondrial genes is calculated.
 
-Cells with <250 total called genes are filtered out.
+- Cells with <250 total called genes are filtered out.
 
-Mitochondrial and ribosomal genes are removed, keeping only protein-coding genes.
+- Mitochondrial and ribosomal genes are removed, keeping only protein-coding genes.
 
-Genes with <3 total UMIs are removed.
+- Genes with <3 total UMIs are removed.
 
 Command:
 
-Bash
-# Args: <directory> <10x_h5_file>
-Rscript anno_filter.R /analysis/data/ filtered_feature_bc_matrix.h5
+``` Rscript anno_filter.R /analysis/data/ filtered_feature_bc_matrix.h5 ```
+
 3. Data Loading & Preprocessing
 
 Initializes the Monocle3 object, performs normalization, and generates the initial UMAP.
 
 Methodology:
 
-Monocle3 clustering is performed. Standard resolutions used are:
-
-1e-5 for dual-guide experiments.
-
-0.5e-4 for single-guide experiments.
+Monocle3 clustering is performed. 
 
 Command:
 
-Bash
-# Args: <directory> <annotated_matrix_csv> <resolution>
-Rscript CIRI_load.R /analysis/data/ annotated_matrix.csv 1e-5
+Args: <directory> <annotated_matrix_csv> <clustering_resolution>
+``` Rscript CIRI_load.R /analysis/data/ annotated_matrix.csv 1e-5 ```
+
 4. Target Validation
 
 Validates perturbation efficiency by comparing target gene expression in perturbed cells vs. non-targeting controls.
 
 Command:
 
-Bash
-Rscript guide_genes_expr.R
+``` Rscript guide_genes_expr.R ```
+
 5. Cluster Enrichment Analysis
 
 Analyzes the distribution of perturbations across clusters (specifically the target muscle cluster).
 
 Methodology:
 
-For single-guide experiments, Cluster 5 is typically selected as the muscle cluster.
+- The cluster of interest is selected.
 
-The percentage of cells in the target cluster is calculated for each guide combination.
+- The percentage of cells in the target cluster is calculated for each guide combination.
 
-Combinations are filtered for a minimum cell count (e.g., 10 or 20).
+- Combinations are filtered for a minimum cell count (e.g., 10 or 20).
 
-Combinations present in both samples with sufficient cells are visualized on heatmaps and scatterplots.
+- Combinations present in both samples with sufficient cells are visualized on heatmaps and scatterplots.
 
 Command:
 
-Bash
-# Args: <directory> <cluster_ids> <control_name> <min_cells>
-Rscript CIRI_sec.R /analysis/data/ 4 "NTCa-NA" 40
+Args: <directory> <cluster_ids> <control_name> <min_cells>
+``` Rscript CIRI_sec.R /analysis/data/ 4 "NTCa-NA" 40 ```
+
 6. Subclustering & Trajectory
 
 Subsets the target lineage (e.g., muscle cluster), re-clusters at high resolution, and learns pseudotime trajectories.
 
 Methodology:
 
-The most differentiated cluster (e.g., Cluster 5) is subclustered.
+- The cluster of interest is subclustered.
 
-Resolution (Single Guide): 1e-3.
-
-Resolution (Dual Guide): 1e-4.
-
-Pseudotime is calculated using Monocle3, setting the root at the node with the highest SOX2 expression.
+- Pseudotime is calculated using Monocle3, setting the root at the node with the highest SOX2 expression.
 
 Command:
 
-Bash
-# Args: <directory> <cluster_ids> <root_gene> <group_name> <resolution>
-Rscript CIRI_sec_subclusters.R /analysis/data/ 4 SOX2 muscle 1e-4
+Args: <directory> <cluster_ids> <root_gene> <group_name> <resolution>
+``` Rscript CIRI_sec_subclusters.R /analysis/data/ 4 SOX2 muscle 1e-4 ```
+
 7. Pseudotime Statistics (KS Test)
 
 Performs Kolmogorov-Smirnov tests to detect significant shifts in differentiation speed (pseudotime distribution) compared to controls.
 
 Command:
 
-Bash
-# Args: <dir> <cds_rdata> <pseudotime_csv> <analysis_name> <run_all> <control_grp> <min_cells>
-Rscript CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8
+Args: <dir> <cds_rdata> <pseudotime_csv> <analysis_name> <run_all> <control_grp> <min_cells>
+``` Rscript CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8 ```
+
 8. Signature Scoring
 
 Scores cells based on predefined gene sets (e.g., Cell Cycle, Sarcomere Core) defined in signatures.R.
 
-Command:
+``` Rscript signatures.R ````
 
-Bash
-Rscript signatures.R
-Input/Output Structure
+
+## Input/Output Structure
 Input:
 
-filtered_feature_bc_matrix.h5 (10x Genomics output)
+- filtered_feature_bc_matrix.h5 (10x Genomics output)
 
-guides.csv (Guide library definition)
+- guides.csv (Guide library definition)
 
 Output:
 
-processed_cds.RData: Monocle3 object.
+- processed_cds.RData: Monocle3 object.
 
-annotation_data.csv: Cell-guide assignments.
+- annotation_data.csv: Cell-guide assignments.
 
-pseudotime_*.csv: Pseudotime values per cell.
+- pseudotime_*.csv: Pseudotime values per cell.
 
-*.pdf: UMAPs, Heatmaps, Violin plots, and Volcano plots. }
+- *.pdf: UMAPs, Heatmaps, Violin plots, and Volcano plots.
