@@ -31,7 +31,7 @@ The analysis follows this sequence:
 - Signatures: Biological scoring.
 
 ## Usage
-1. Perturbation Deconvolution
+### 1. Perturbation Deconvolution
 
 Assigns guide identities based on "fixed" (Cas9 modality) and "variable" (target) guide capture.
 
@@ -52,7 +52,7 @@ Command:
 
 ``` Rscript CIRI_explore.R /analysis/data/ ```
 
-2. Annotation & Filtering
+### 2. Annotation & Filtering
 
 Performs quality control on the gene expression matrix.
 
@@ -70,7 +70,7 @@ Command:
 
 ``` Rscript anno_filter.R /analysis/data/ filtered_feature_bc_matrix.h5 ```
 
-3. Data Loading & Preprocessing
+### 3. Data Loading & Preprocessing
 
 Initializes the Monocle3 object, performs normalization, and generates the initial UMAP.
 
@@ -83,7 +83,7 @@ Command:
 Args: <directory> <annotated_matrix_csv> <clustering_resolution>
 ``` Rscript CIRI_load.R /analysis/data/ annotated_matrix.csv 1e-5 ```
 
-4. Target Validation
+### 4. Target Validation
 
 Validates perturbation efficiency by comparing target gene expression in perturbed cells vs. non-targeting controls.
 
@@ -91,7 +91,7 @@ Command:
 
 ``` Rscript guide_genes_expr.R ```
 
-5. Cluster Enrichment Analysis
+### 5. Cluster Enrichment Analysis
 
 Analyzes the distribution of perturbations across clusters (specifically the target muscle cluster).
 
@@ -110,7 +110,7 @@ Command:
 Args: <directory> <cluster_ids> <control_name> <min_cells>
 ``` Rscript CIRI_sec.R /analysis/data/ 4 "NTCa-NA" 40 ```
 
-6. Subclustering & Trajectory
+### 6. Subclustering & Trajectory
 
 Subsets the target lineage (e.g., muscle cluster), re-clusters at high resolution, and learns pseudotime trajectories.
 
@@ -125,7 +125,7 @@ Command:
 Args: <directory> <cluster_ids> <root_gene> <group_name> <resolution>
 ``` Rscript CIRI_sec_subclusters.R /analysis/data/ 4 SOX2 muscle 1e-4 ```
 
-7. Pseudotime Statistics (KS Test)
+### 7. Pseudotime Statistics (KS Test)
 
 Performs Kolmogorov-Smirnov tests to detect significant shifts in differentiation speed (pseudotime distribution) compared to controls.
 
@@ -134,7 +134,7 @@ Command:
 Args: <dir> <cds_rdata> <pseudotime_csv> <analysis_name> <run_all> <control_grp> <min_cells>
 ``` Rscript CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8 ```
 
-8. Signature Scoring
+### 8. Signature Scoring
 
 Scores cells based on predefined gene sets (e.g., Cell Cycle, Sarcomere Core) defined in signatures.R.
 
