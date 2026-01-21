@@ -1,6 +1,3 @@
-# CIRI_bioinfo
-Scripts for the analysis of CIRI experiments 
-
 # CIRI (CRISPR Interference and Activation) Analysis Pipeline
 
 This repository contains an R-based pipeline for processing and analyzing single-cell RNA-seq data from CRISPRa/i screens. It handles perturbation deconvolution, quality control, dimensionality reduction (Monocle3), and trajectory analysis to assess the impact of guides on cell differentiation.
