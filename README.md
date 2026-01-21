@@ -81,6 +81,7 @@ Monocle3 clustering is performed.
 Command:
 
 Args: <directory> <annotated_matrix_csv> <clustering_resolution>
+
 ``` Rscript CIRI_load.R /analysis/data/ annotated_matrix.csv 1e-5 ```
 
 ### 4. Target Validation
@@ -108,6 +109,7 @@ Methodology:
 Command:
 
 Args: <directory> <cluster_ids> <control_name> <min_cells>
+
 ``` Rscript CIRI_sec.R /analysis/data/ 4 "NTCa-NA" 40 ```
 
 ### 6. Subclustering & Trajectory
@@ -123,6 +125,7 @@ Methodology:
 Command:
 
 Args: <directory> <cluster_ids> <root_gene> <group_name> <resolution>
+
 ``` Rscript CIRI_sec_subclusters.R /analysis/data/ 4 SOX2 muscle 1e-4 ```
 
 ### 7. Pseudotime Statistics (KS Test)
@@ -132,13 +135,14 @@ Performs Kolmogorov-Smirnov tests to detect significant shifts in differentiatio
 Command:
 
 Args: <dir> <cds_rdata> <pseudotime_csv> <analysis_name> <run_all> <control_grp> <min_cells>
+
 ``` Rscript CIRI_pseudotime.R /analysis/data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8 ```
 
 ### 8. Signature Scoring
 
 Scores cells based on predefined gene sets (e.g., Cell Cycle, Sarcomere Core) defined in signatures.R.
 
-``` Rscript signatures.R ````
+``` Rscript signatures.R ```
 
 
 ## Input/Output Structure
