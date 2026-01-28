@@ -33,11 +33,21 @@ The analysis follows this sequence:
 ## Usage
 ### 1. Perturbation Deconvolution
 
-Assigns guide identities based on "fixed" (Cas9 modality) and "variable" (target) guide capture.
+Assigns guide identities based on "fixed" (Cas9 modality) and "variable" (target) guide capture. This is the first and mandatory experiment of the analysis.
 
-Single Guide: CIRI_explore.R
+The front end function were created with Baryon (see Fairflow-BioinformaticsFramework/baryon-lang). 
 
-Dual Guide: CIRI_explore_2guides.R
+Command:
+
+```./perturbation_assignment/CIRI_assign.sh  --target_directory "/home/AB11_screening_CRISPR/analysis_11/."  --script_directory "/home/CIRI_bioinfo/perturbation_assignment/."   --guide_strategy 1   --matrix_filename "filtered_feature_bc_matrix.h5"   --threshold_a -1   --threshold_i -1```
+
+Option,Required,Description,Example
+--target_directory,Yes,The working directory containing your input files (guides.csv and the .h5 matrix). Note: Output files will be saved here.,/data/experiment_1
+--script_directory,Yes,The directory where the CIRI_unified.R script is located.,/scripts/bioinfo
+--guide_strategy,Yes,The analysis logic mode.1 = Single Guide (Ratio based)2 = Dual Guide (Sum/Rank based),2
+--matrix_filename,Yes,The specific filename of the 10x Genomics H5 matrix inside the target directory.,filtered_feature_bc_matrix.h5
+--threshold_a,No,Manual UMI threshold for CRISPRa. Set to -1 to auto-calculate.,23.5 (or -1)
+--threshold_i,No,Manual UMI threshold for CRISPRi. Set to -1 to auto-calculate.,-1
 
 Methodology:
 
@@ -47,10 +57,6 @@ Variable Guides (Single): Variable guides are assigned if the top guide has ≥1
 
 Variable Guides (Dual): The sum of the top two guides must be ≥4 UMIs, and the ratio between this sum and the third guide must be ≥10. Cells are filtered if the two variable guides do not target the same gene.
 
-
-Command:
-
-``` Rscript CIRI_explore.R /analysis/data/ ```
 
 ### 2. Annotation & Filtering
 
