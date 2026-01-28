@@ -41,7 +41,7 @@ Command:
 
 ```./perturbation_assignment/CIRI_assign.sh  --target_directory "/home/AB11_screening_CRISPR/analysis_11/."  --script_directory "/home/CIRI_bioinfo/perturbation_assignment/."   --guide_strategy 1   --matrix_filename "filtered_feature_bc_matrix.h5"   --threshold_a -1   --threshold_i -1```
 
---target_directory
+### --target_directory 
 
 Required: Yes
 
@@ -49,7 +49,7 @@ Description: The working directory containing your input files (guides.csv and t
 
 Example: /data/experiment_1
 
---script_directory
+### --script_directory
 
 Required: Yes
 
@@ -57,7 +57,7 @@ Description: The directory where the CIRI_unified.R script is located.
 
 Example: /scripts/bioinfo
 
---guide_strategy
+### --guide_strategy
 
 Required: Yes
 
@@ -69,7 +69,7 @@ Description: The analysis logic mode.
 
 Example: 2
 
---matrix_filename
+### --matrix_filename
 
 Required: Yes
 
@@ -77,7 +77,7 @@ Description: The specific filename of the 10x Genomics H5 matrix inside the targ
 
 Example: filtered_feature_bc_matrix.h5
 
---threshold_a
+### --threshold_a
 
 Required: No
 
@@ -85,7 +85,7 @@ Description: Manual UMI threshold for CRISPRa. Set to -1 to auto-calculate.
 
 Example: 23.5 (or -1)
 
---threshold_i
+### --threshold_i
 
 Required: No
 
