@@ -41,8 +41,10 @@ Command:
 
 ```./perturbation_assignment/CIRI_assign.sh  --target_directory "/home/AB11_screening_CRISPR/analysis_11/."  --script_directory "/home/CIRI_bioinfo/perturbation_assignment/."   --guide_strategy 1   --matrix_filename "filtered_feature_bc_matrix.h5"   --threshold_a -1   --threshold_i -1```
 
-Option,Required,Description,Example
---target_directory,Yes,The working directory containing your input files (guides.csv and the .h5 matrix). Note: Output files will be saved here.,/data/experiment_1
+Option, Required, Description, Example
+--target_directory, Yes, The working directory containing your input files (guides.csv and the .h5 matrix).Note: Output files will be saved here.,/data/experiment_1
+
+
 --script_directory,Yes,The directory where the CIRI_unified.R script is located.,/scripts/bioinfo
 --guide_strategy,Yes,The analysis logic mode.1 = Single Guide (Ratio based)2 = Dual Guide (Sum/Rank based),2
 --matrix_filename,Yes,The specific filename of the 10x Genomics H5 matrix inside the target directory.,filtered_feature_bc_matrix.h5
