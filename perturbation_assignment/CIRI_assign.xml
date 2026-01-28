@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tool id="CIRI_assign" name="CIRI_assign">
+  <description>CRISPR QC and assignment analysis.</description>
+  <requirements>
+    <container type="docker">docker.io/hedgelab/ciri_analysis</container>
+  </requirements>
+  <command><![CDATA[/opt/scripts/CIRI_unified.R /mnt/analysis $guide_strategy $matrix_filename $threshold_a $threshold_i]]></command>
+  <inputs>
+    <param type="data_collection" name="target_directory" value="&lt;nil&gt;">
+      <label>Working directory containing the h5 matrix and guides.csv</label>
+    </param>
+    <param type="data_collection" name="script_directory" value="&lt;nil&gt;">
+      <label>Directory containing the CIRI_unified.R script</label>
+    </param>
+    <param type="select" name="guide_strategy" value="1">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <label>Variable guides logic: 1=Single, 2=Dual</label>
+    </param>
+    <param type="text" name="matrix_filename" value="&lt;nil&gt;">
+      <label>Filename of the HDF5 feature matrix</label>
+    </param>
+    <param type="text" name="threshold_a" value="&lt;nil&gt;">
+      <label>Manual threshold for CRISPRa</label>
+    </param>
+    <param type="text" name="threshold_i" value="&lt;nil&gt;">
+      <label>Manual threshold for CRISPRi</label>
+    </param>
+  </inputs>
+  <outputs></outputs>
+</tool>

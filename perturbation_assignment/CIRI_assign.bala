@@ -1,0 +1,28 @@
+(bala CIRI_assign
+  (
+    ; --- Parameter Definitions ---
+    (target_directory directory (desc "Working directory containing the h5 matrix and guides.csv"))
+    (script_directory directory (desc "Directory containing the CIRI_unified.R script"))
+    (guide_strategy (enum ("1" "2")) (desc "Variable guides logic: 1=Single, 2=Dual"))
+    (matrix_filename string (desc "Filename of the HDF5 feature matrix"))
+    (threshold_a string (desc "Manual threshold for CRISPRa") (default -1))
+    (threshold_i string (desc "Manual threshold for CRISPRi") (default -1))
+
+    (desc "CRISPR QC and assignment analysis.")
+
+    (run_docker
+      (image "docker.io/hedgelab/ciri_analysis")
+      
+      (volumes 
+        (target_directory "/mnt/analysis")
+        (script_directory "/opt/scripts")
+      )
+
+      ; 1. Define the executable here
+      (command "sudo Rscript")
+
+      ; 2. Define the path and other inputs as separate arguments here
+      (arguments "/opt/scripts/CIRI_unified.R" "/mnt/analysis" guide_strategy matrix_filename threshold_a threshold_i)
+    )
+  )
+)
