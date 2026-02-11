@@ -12,7 +12,14 @@ suppressMessages(library(ggsignif))
 suppressMessages(library(ggtext))
 set.seed(1234597698)
 
-dir = "/Users/marialuisaratto/scripts/CIRI12_starting_dataset/"
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) == 0) {
+  stop("Error: No directory provided. Please supply the input directory path.")
+}
+
+dir = args[1]
+#dir = "/Users/marialuisaratto/scripts/CIRI12_starting_dataset/"
 
 load(paste0(dir, "processed_cds.RData"))
 norm_mat = normalized_counts(cds)
@@ -27,25 +34,25 @@ data = data.frame(nomi = colnames(norm_mat))
 rownames(data) = data$nomi
 num_pieces = length(strsplit(colnames(norm_mat)[1], "\\.")[[1]])
 
-if(num_pieces == 8){
-  data = data.frame(nomi = colnames(norm_mat))
-  rownames(data) = data$nomi
+# if(num_pieces == 8){
+#   data = data.frame(nomi = colnames(norm_mat))
+#   rownames(data) = data$nomi
   
-  data = separate(data, nomi, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
-} else if(num_pieces == 10){
-  data = separate(
-    data,
-    nomi,
-    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
-    sep = "\\.",
-    remove = FALSE,
-    convert = TRUE,
-    fill = "right"
-  )
-  
-  data = mutate(data, guide_a = paste(guide_a1, guide_a2, sep = ";"))
-  data = mutate(data, guide_i = paste(guide_i1, guide_i2, sep = ";"))
-}
+  data = separate(data, nomi, into = c("cellID","sample","guide_a","guide_i", "comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+# } else if(num_pieces > 8){
+#   data = separate(
+#     data,
+#     nomi,
+#     into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
+#     sep = "\\.",
+#     remove = FALSE,
+#     convert = TRUE,
+#     fill = "right"
+#   )
+#   
+#   data = mutate(data, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+#   data = mutate(data, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+# }
 
 #ORDER IN SAME WAY MATRIX AND ANNOTATION 
 data_complete = norm_mat[, order(colnames(norm_mat))]
@@ -203,21 +210,23 @@ violin_df_guides = map_df(unique(data_a$gene_a), build_violin_df_guide)
 # Check number of pieces in the first column name
 num_pieces = length(strsplit(violin_df_guides$cell[1], "\\.")[[1]])
 
-if(num_pieces == 8){
-  violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
-} else if(num_pieces == 10){
-  violin_df_guides = separate(
-    violin_df_guides, cell,
-    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
-    sep = "\\.",
-    remove = FALSE,
-    convert = TRUE,
-    fill = "right"
-  )
-  
-  violin_df_guides = mutate(violin_df_guides, guide_a = paste(guide_a1, guide_a2, sep = ";"))
-  violin_df_guides = mutate(violin_df_guides, guide_i = paste(guide_i1, guide_i2, sep = ";"))
-}
+# if(num_pieces == 8){
+#   violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+# } else if(num_pieces == 10){
+#   violin_df_guides = separate(
+#     violin_df_guides, cell,
+#     into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
+#     sep = "\\.",
+#     remove = FALSE,
+#     convert = TRUE,
+#     fill = "right"
+#   )
+#   
+#   violin_df_guides = mutate(violin_df_guides, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+#   violin_df_guides = mutate(violin_df_guides, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+# }
+
+violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
 
 violin_df_guides = violin_df_guides[, c("cell", "gene", "class", "guide_a", "expr", "perturbed")]
 violin_df_guides = violin_df_guides %>%
@@ -433,21 +442,23 @@ violin_df_guides = map_df(unique(data_i$gene_i), build_violin_df_guide)
 # Check number of pieces in the first column name
 num_pieces = length(strsplit(violin_df_guides$cell[1], "\\.")[[1]])
 
-if(num_pieces == 8){
-  violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
-} else if(num_pieces == 10){
-  violin_df_guides = separate(
-    violin_df_guides, cell,
-    into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
-    sep = "\\.",
-    remove = FALSE,
-    convert = TRUE,
-    fill = "right"
-  )
-  
-  violin_df_guides = mutate(violin_df_guides, guide_a = paste(guide_a1, guide_a2, sep = ";"))
-  violin_df_guides = mutate(violin_df_guides, guide_i = paste(guide_i1, guide_i2, sep = ";"))
-}
+# if(num_pieces == 8){
+#   violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "gene_a", "gene_i", "comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+# } else if(num_pieces == 10){
+#   violin_df_guides = separate(
+#     violin_df_guides, cell,
+#     into = c("cellID", "sample", "guide_a1", "guide_a2", "guide_i1", "guide_i2", "gene_a", "gene_i", "comb", "type"),
+#     sep = "\\.",
+#     remove = FALSE,
+#     convert = TRUE,
+#     fill = "right"
+#   )
+#   
+#   violin_df_guides = mutate(violin_df_guides, guide_a = paste(guide_a1, guide_a2, sep = ";"))
+#   violin_df_guides = mutate(violin_df_guides, guide_i = paste(guide_i1, guide_i2, sep = ";"))
+# }
+violin_df_guides = separate(violin_df_guides, cell, into = c("cellID","sample","guide_a","guide_i", "comb", "gene_a", "gene_i", "gene_comb", "type"), sep = "\\.", remove = FALSE, convert = TRUE)
+
 
 violin_df_guides = violin_df_guides[, c("cell", "gene", "class", "guide_i", "expr", "perturbed")]
 violin_df_guides = violin_df_guides %>%

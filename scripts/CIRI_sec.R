@@ -36,7 +36,7 @@ load(paste0(dir, "/processed_cds.RData"))
 
 #### enrichment / depletion 
 #min_cells_cluster = 40
-min_cells_cluster = as.numeric(args[4])
+#min_cells_cluster = as.numeric(args[4])
 
 #example command
 #Rscript ../CIRI_sec.R /analysis/data/ 3 "NTCa_1A;NTCa_1B-NA" 40 
@@ -50,10 +50,10 @@ cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>%
   mutate(cellsxcluster = n()) 
 
 cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
-print(paste0("Min cells per clusters: ", min_cells_cluster))
-print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
-cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
-df = filter(df, clusters %in% cellsxcluster$clusters)
+#print(paste0("Min cells per clusters: ", min_cells_cluster))
+#print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
+#cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
+#df = filter(df, clusters %in% cellsxcluster$clusters)
 
 
 # Calculate the number of cells per cluster and condition a 

@@ -36,20 +36,16 @@ setwd(dir)
 print(paste0("Working directory: ", dir))
 
 # --- Configuration ---
-a_genes = c("MYOD_1", "MYOD_2")
-i_genes = c("NANOG","OCT4","SOX2")
+#a_genes = c("MYOD_1", "MYOD_2")
+#i_genes = c("NANOG","OCT4","SOX2")
 
 # --- Load Annotations ---
 ann = read.csv(file.path(dir, "guides.csv"), header = F)
-names(ann) = c("feature", "seq", "type")
+names(ann) = c("feature", "type", "fixed")
 ann$seq = NULL
 
-tmp_a = data.frame(a_genes, rep("a", length(a_genes)))
-tmp_i = data.frame(i_genes, rep("i", length(i_genes)))
-colnames(tmp_a) = c("feature", "type")
-names(tmp_i) = c("feature", "type")
-
-ann = rbind(ann, tmp_a, tmp_i) %>% distinct()
+a_genes = ann[ann$type == "a" & ann$fixed == "f", "feature"]
+i_genes = ann[ann$type == "i" & ann$fixed == "f", "feature"]
 
 # --- Load 10x Data ---
 CIRI_file <- H5File$new(h5matrix, mode = "r")
