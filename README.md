@@ -3,6 +3,7 @@
 This repository contains an R-based pipeline for processing and analyzing single-cell RNA-seq data from CRISPRa/i screens. It handles perturbation deconvolution, quality control, dimensionality reduction (Monocle3), and trajectory analysis to assess the impact of guides on cell differentiation.
 
 ## Prerequisites
+
 The pipeline runs in a Dockerized environment to ensure reproducibility (image available at docker.io/hedgelab/ciri_analysis).
 
 Base Image: rocker/r-ver:4.4.2 (Ubuntu 24.04 LTS).
@@ -31,6 +32,7 @@ The analysis follows this sequence:
 - Signatures: Biological scoring.
 
 ## Usage
+
 ### 1. Perturbation Deconvolution
 
 Assigns guide identities based on "fixed" and "variable" guide capture. This is the first and mandatory step of the analysis.
