@@ -12,9 +12,9 @@ Rscript /scripts/CIRI_sec.R /data/ 5 "NTCa-NA"
 
 Rscript /scripts/CIRI_sec_subclusters.R /data/ 5 SOX2 muscle 1e-3
 
-Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa-NA" 8
+Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_1_reprocessed_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa-NA" 8
 
-Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_2_ordered.RData pseudotime_muscle_2.csv muscle_2 TRUE "NTCa-NA" 8
+Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_2_reprocessed_ordered.RData pseudotime_muscle_2.csv muscle_2 TRUE "NTCa-NA" 8
 
 Rscript /scripts/guide_genes_expr.R /data/ 
 
@@ -32,8 +32,8 @@ Rscript /scripts/CIRI_sec.R /data/ 3 "NTCa_1A;NTCa_1B-NA"
 
 Rscript /scripts/CIRI_sec_subclusters.R /data/ 3 SOX2 muscle 1e-4
 
-Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_1_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8
+Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_1_reprocessed_ordered.RData pseudotime_muscle_1.csv muscle_1 TRUE "NTCa_1A;NTCa_1B-NA" 8
 
-Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_2_ordered.RData pseudotime_muscle_2.csv muscle_2 TRUE "NTCa_1A;NTCa_1B-NA" 8
+Rscript /scripts/CIRI_pseudotime.R /data/ cds_sample_2_reprocessed_ordered.RData pseudotime_muscle_2.csv muscle_2 TRUE "NTCa_1A;NTCa_1B-NA" 8
 
 Rscript /scripts/guide_genes_expr.R /data/ 

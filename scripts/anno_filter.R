@@ -86,21 +86,59 @@ p <- ggplot(qc_data, aes(x = percent.mt, y = percent.rb, colour = nCount_RNA)) +
 
 ggsave(p, filename = paste0(dir, "RiboMito_filtered.pdf"), width = 10, height = 10)
 
-# Get protein-coding genes
-mart <- useMart(
-  biomart = "ensembl", 
-  dataset = "hsapiens_gene_ensembl", 
-  host = "https://sep2025.archive.ensembl.org" 
-)
-all_coding_genes <- getBM(
-  mart = mart,
-  attributes = c("ensembl_gene_id", "hgnc_symbol"),
-  filters = "biotype",
-  values = list(biotype = "protein_coding")
+# # Get protein-coding genes
+# mart <- useMart(
+#   biomart = "ensembl", 
+#   dataset = "hsapiens_gene_ensembl", 
+#   host = "https://sep2025.archive.ensembl.org" 
+# )
+# all_coding_genes <- getBM(
+#   mart = mart,
+#   attributes = c("ensembl_gene_id", "hgnc_symbol"),
+#   filters = "biotype",
+#   values = list(biotype = "protein_coding")
+# )
+# 
+# # Fallback if symbol is missing
+# all_coding_genes$mix <- ifelse(all_coding_genes$hgnc_symbol == "", all_coding_genes$ensembl_gene_id, all_coding_genes$hgnc_symbol)
+
+ref_file <- "ensembl_protein_coding_genes.csv"
+
+if (file.exists(ref_file)) {
+  all_coding_genes <- read.csv(ref_file)
+} else {
+  print("The file 'ensembl_protein_coding_genes.csv' is missing. Run the download script first.")
+  options(timeout = 600)
+  
+  message("Connecting directly to the Ensembl main host...")
+  
+  # Use useMart to bypass the automatic mirror-cycling logic
+  mart <- useMart(
+    biomart = "ENSEMBL_MART_ENSEMBL", 
+    dataset = "hsapiens_gene_ensembl", 
+    host = "https://www.ensembl.org" # Directly use the main host
+  )
+  
+  all_coding_genes <- getBM(
+    mart = mart,
+    attributes = c("ensembl_gene_id", "hgnc_symbol"),
+    filters = "biotype",
+    values = "protein_coding"
+  )
+  
+  write.csv(all_coding_genes, "ensembl_protein_coding_genes.csv", row.names = FALSE)
+  message("Success! Local reference saved.")
+}
+
+# Original logic for 'mix' column
+all_coding_genes$mix <- ifelse(
+  is.na(all_coding_genes$hgnc_symbol) | all_coding_genes$hgnc_symbol == "", 
+  all_coding_genes$ensembl_gene_id, 
+  all_coding_genes$hgnc_symbol
 )
 
-# Fallback if symbol is missing
-all_coding_genes$mix <- ifelse(all_coding_genes$hgnc_symbol == "", all_coding_genes$ensembl_gene_id, all_coding_genes$hgnc_symbol)
+# Apply filter
+data_seurat <- subset(data_seurat, features = intersect(rownames(data_seurat), all_coding_genes$mix))
 
 # Filter to protein-coding genes only
 data_seurat <- subset(data_seurat, features = intersect(rownames(data_seurat), all_coding_genes$mix))
